@@ -34,7 +34,7 @@ services:
       start_period: 5s
 
   smoke:
-    image: curlimages/curl:8.19.0
+    image: curlimages/curl:8.20.0
     depends_on:
       server:
         condition: service_healthy
