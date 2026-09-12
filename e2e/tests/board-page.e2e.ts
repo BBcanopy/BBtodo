@@ -1436,6 +1436,7 @@ test("board page reorders tasks and manages lanes", async ({ page }) => {
   await expect(laneHeadings).toHaveText(["Todo", "In Progress", "In review", "Done", "Ready for QA"]);
 
   const qaColumn = page.getByTestId("board-column-project-1-lane-custom-1");
+  const qaContent = qaColumn.locator(".board-column__content");
   const doneColumn = page.getByTestId(`board-column-${laneId("project-1", "done")}`);
   const shipNoteSubtaskSlot = page.getByTestId("task-drop-slot-task-5-0");
 
@@ -1456,11 +1457,15 @@ test("board page reorders tasks and manages lanes", async ({ page }) => {
   await expect(todoColumn.getByText("Review retry settings")).toHaveCount(0);
 
   const retrySubtask = createdCard.locator(".task-card__subtasks").getByTestId("task-card-task-1");
-  await dragTaskToTarget(page, retrySubtask, taskCardSurface(releaseChecklistCard), 0.2);
+  await beginTaskDrag(page, retrySubtask);
+  await hoverDraggedTaskOver(page, qaContent, 0.95);
+  await finishTaskDrag(page);
   await expect(createdCard.locator(".task-card__subtasks").getByText("Review retry settings")).toHaveCount(0);
   await expect(qaColumn.getByText("Review retry settings")).toBeVisible();
 
-  await dragTaskToTarget(page, copyCard, taskCardSurface(releaseChecklistCard), 0.8);
+  await beginTaskDrag(page, copyCard);
+  await hoverDraggedTaskOver(page, qaContent, 0.95);
+  await finishTaskDrag(page);
   const copyCardInQa = qaColumn.getByTestId("task-card-task-4");
   await expect(copyCardInQa).toBeVisible();
   await beginTaskDrag(page, copyCardInQa);
