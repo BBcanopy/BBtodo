@@ -52,6 +52,12 @@ async function waitForProjectCardLayoutToSettle(card: Locator) {
     .not.toBeNull();
 }
 
+async function expectQuickCardEntrance(card: Locator) {
+  await expect(card).toHaveCSS("animation-name", "card-appear");
+  await expect(card).toHaveCSS("animation-duration", "0.12s");
+  await expect(card).toHaveCSS("animation-delay", "0s");
+}
+
 async function findProjectGridBlankPoint(page: Page) {
   const projectGrid = page.locator(".project-grid");
   await expect(projectGrid).toBeVisible();
@@ -263,6 +269,21 @@ test("projects page lists boards, filters project cards, and opens them from the
 
   await expect(page).toHaveURL(/\/projects\/PART$/);
   await expect(page.locator(".subnav__current-value")).toHaveText("Partner audit");
+});
+
+test("cards load with a brief, unstaggered entrance", async ({ page }) => {
+  await mockAuthenticated(page, { disableAnimations: false, projects: projectsForGrid });
+
+  await page.goto("/");
+  await expectQuickCardEntrance(page.getByTestId("project-card-project-6"));
+
+  await page.goto("/projects/BILL");
+  await expectQuickCardEntrance(page.locator(".board-column").last());
+  await expectQuickCardEntrance(page.getByTestId("task-card-task-4"));
+
+  await page.goto("/todos");
+  await expectQuickCardEntrance(page.getByTestId("todo-project-group-project-1"));
+  await expectQuickCardEntrance(page.getByTestId("todo-task-card-task-4"));
 });
 
 test("project cards open on click and delete through a confirmation popover", async ({ page }) => {
