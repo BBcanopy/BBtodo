@@ -336,13 +336,17 @@ async function fulfillJson(route: Route, status: number, body: unknown) {
   });
 }
 
-async function bootstrapPage(page: Page) {
+async function bootstrapPage(page: Page, disableAnimations = true) {
   if (bootstrappedPages.has(page)) {
     return;
   }
 
   bootstrappedPages.add(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
+  if (!disableAnimations) {
+    return;
+  }
+
   await page.addInitScript(
     ({ cssText, styleId }: { cssText: string; styleId: string }) => {
       function ensureReducedMotionStyle() {
@@ -390,6 +394,7 @@ export async function mockAuthenticated(
   options?: {
     apiTokens?: ApiTokenSummary[];
     deleteProjectDelayMs?: number;
+    disableAnimations?: boolean;
     nextApiTokenId?: number;
     nextProjectId?: number;
     projects?: Project[];
@@ -399,7 +404,7 @@ export async function mockAuthenticated(
     tasks?: Task[];
   }
 ) {
-  await bootstrapPage(page);
+  await bootstrapPage(page, options?.disableAnimations);
   let nextApiTokenId = options?.nextApiTokenId ?? 1;
   let nextProjectId = options?.nextProjectId ?? 2;
   let nextLaneId = 1;
