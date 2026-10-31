@@ -2970,6 +2970,17 @@ textarea:focus {
   flex-wrap: wrap;
 }
 
+.task-editor__save-button:hover,
+.task-editor__save-button:active {
+  transform: none;
+}
+
+.task-editor__save-button:disabled[aria-busy="true"] {
+  opacity: 1;
+  box-shadow: 0 16px 34px -18px rgba(35, 94, 91, 0.76);
+  cursor: wait;
+}
+
 .task-editor__close-button {
   background: linear-gradient(
     145deg,

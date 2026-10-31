@@ -723,7 +723,7 @@ test("board page autosaves cards and filters tasks", async ({ page }) => {
   await expect(page.getByText("Review retry scope")).toHaveCount(0);
 });
 
-test("board page keeps the save label steady and disables saves during autosave", async ({ page }) => {
+test("board page keeps save appearance steady and disables saves during autosave", async ({ page }) => {
   await mockAuthenticated(page, { projects: projectsForGrid, tasks });
   let releaseSave!: () => void;
   const saveGate = new Promise<void>((resolve) => { releaseSave = resolve; });
@@ -739,10 +739,23 @@ test("board page keeps the save label steady and disables saves during autosave"
   await page.goto(`${billingBoardPath}/BILL-1`);
   const editDialog = page.getByRole("dialog", { name: "Edit BILL-1" });
   const saveButton = editDialog.getByRole("button", { exact: true, name: "Save card" });
+  const getButtonAppearance = () => saveButton.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      background: style.backgroundImage,
+      color: style.color,
+      opacity: style.opacity,
+      shadow: style.boxShadow,
+      transform: style.transform
+    };
+  });
   const updatedTime = editDialog.locator(".task-editor__meta-item", { hasText: "Updated" }).locator("time");
   await expect(saveButton).toBeEnabled();
+  await saveButton.scrollIntoViewIfNeeded();
   const initialButtonBox = await saveButton.boundingBox();
-  const initialBackground = await saveButton.evaluate((element) => getComputedStyle(element).backgroundImage);
+  const initialAppearance = await getButtonAppearance();
+  await saveButton.hover();
+  expect(await getButtonAppearance()).toEqual(initialAppearance);
   const saveRequest = page.waitForRequest((request) => request.method() === "PATCH");
   await editDialog.getByLabel("Title").fill("Review retry rollout");
   await saveRequest;
@@ -753,7 +766,11 @@ test("board page keeps the save label steady and disables saves during autosave"
     await expect(editDialog.getByText(/Unsaved changes|All changes saved|Saving\.\.\./)).toHaveCount(0);
     await expect(editDialog.getByTestId("task-editor-save-status")).toHaveCount(0);
     expect(await saveButton.boundingBox()).toEqual(initialButtonBox);
-    expect(await saveButton.evaluate((element) => getComputedStyle(element).backgroundImage)).toBe(initialBackground);
+    expect(await getButtonAppearance()).toEqual(initialAppearance);
+    await expect(saveButton).toHaveAttribute("aria-busy", "true");
+    await expect(saveButton).toHaveCSS("cursor", "wait");
+    await saveButton.hover();
+    expect(await getButtonAppearance()).toEqual(initialAppearance);
     await expect(updatedTime).toHaveText("2026-03-18T07:10:00.000Z");
     await saveButton.click({ force: true, clickCount: 3 });
     expect(savedDrafts).toHaveLength(1);
@@ -772,8 +789,12 @@ test("board page keeps the save label steady and disables saves during autosave"
   }]);
   await expect(saveButton).toBeEnabled();
   await expect(saveButton).toHaveText("Save card");
+  await expect(saveButton).toHaveAttribute("aria-busy", "false");
+  expect(await getButtonAppearance()).toEqual(initialAppearance);
   await editDialog.getByLabel("Title").fill("");
   await expect(saveButton).toBeDisabled();
+  await expect(saveButton).toHaveCSS("opacity", "0.55");
+  await expect(saveButton).toHaveCSS("box-shadow", "none");
 });
 
 for (const revertToOriginal of [false, true]) {
