@@ -337,8 +337,6 @@ type TaskEditorDraft = {
   title: string;
 };
 
-type TaskEditorSaveStatus = "dirty" | "error" | "saved" | "saving";
-
 type TaskEditorSaveWaiter = {
   reject: (error: unknown) => void;
   resolve: (task: Task) => void;
@@ -1598,7 +1596,7 @@ function TaskEditorDialog({
   const [destinationProjectId, setDestinationProjectId] = useState("");
   const [moveError, setMoveError] = useState<unknown>(null);
   const [saveError, setSaveError] = useState<unknown>(null);
-  const [saveStatus, setSaveStatus] = useState<TaskEditorSaveStatus>("saved");
+  const [isSavePending, setIsSavePending] = useState(false);
 
   const autosaveTimeoutRef = useRef<number | null>(null);
   const closeRequestPendingRef = useRef(false);
@@ -1669,25 +1667,6 @@ function TaskEditorDialog({
     }
   }
 
-  function getCommittedDraft(): TaskEditorDraft {
-    return {
-      body: bodyRef.current,
-      tags: cloneTaskTags(selectedTagsRef.current),
-      title: titleRef.current.trim()
-    };
-  }
-
-  function hasTransientTagDraft() {
-    return (
-      mergeUniqueTags(selectedTagsRef.current, tagInputValueRef.current, tagInputColorRef.current) !==
-      selectedTagsRef.current
-    );
-  }
-
-  function hasAnyUnsavedChanges() {
-    return !areTaskEditorDraftsEqual(getCommittedDraft(), persistedDraftRef.current) || hasTransientTagDraft();
-  }
-
   function commitTransientTagDraft() {
     const nextTags = mergeUniqueTags(selectedTagsRef.current, tagInputValueRef.current, tagInputColorRef.current);
 
@@ -1710,7 +1689,10 @@ function TaskEditorDialog({
   function scheduleAutosave(draft: TaskEditorDraft) {
     clearAutosaveTimer();
 
-    if (draft.title.length === 0 || areTaskEditorDraftsEqual(draft, persistedDraftRef.current)) {
+    if (
+      draft.title.length === 0 ||
+      (!saveLoopPromiseRef.current && areTaskEditorDraftsEqual(draft, persistedDraftRef.current))
+    ) {
       return;
     }
 
@@ -1736,7 +1718,7 @@ function TaskEditorDialog({
       }
 
       setSaveError(null);
-      setSaveStatus("saving");
+      setIsSavePending(true);
 
       try {
         const updatedTask = await onPersist(request.draft);
@@ -1748,17 +1730,12 @@ function TaskEditorDialog({
         persistedTaskRef.current = updatedTask;
         setPersistedTask(updatedTask);
         request.waiters.forEach((waiter) => waiter.resolve(updatedTask));
-
-        if (!pendingSaveRequestRef.current) {
-          setSaveStatus(hasAnyUnsavedChanges() ? "dirty" : "saved");
-        }
       } catch (error) {
         if (!isMountedRef.current) {
           return;
         }
 
         setSaveError(error);
-        setSaveStatus("error");
         request.waiters.forEach((waiter) => waiter.reject(error));
 
         const pendingRequest = pendingSaveRequestRef.current as TaskEditorSaveRequest | null;
@@ -1770,6 +1747,9 @@ function TaskEditorDialog({
     }
 
     saveLoopPromiseRef.current = null;
+    if (isMountedRef.current) {
+      setIsSavePending(false);
+    }
   }
 
   function enqueueSave(draft: TaskEditorDraft, options?: { waitForResult?: boolean }) {
@@ -1778,14 +1758,12 @@ function TaskEditorDialog({
     if (draft.title.length === 0) {
       const error = new Error("Task title is required to save changes.");
       setSaveError(error);
-      setSaveStatus("error");
       return options?.waitForResult ? Promise.reject(error) : Promise.resolve(persistedTaskRef.current);
     }
 
-    if (areTaskEditorDraftsEqual(draft, persistedDraftRef.current)) {
+    if (!saveLoopPromiseRef.current && areTaskEditorDraftsEqual(draft, persistedDraftRef.current)) {
       if (isMountedRef.current) {
         setSaveError(null);
-        setSaveStatus(hasAnyUnsavedChanges() ? "dirty" : "saved");
       }
 
       return Promise.resolve(persistedTaskRef.current);
@@ -1857,12 +1835,10 @@ function TaskEditorDialog({
     setMoveError(null);
     const nextDraft = commitTransientTagDraft();
 
-    if (!areTaskEditorDraftsEqual(nextDraft, persistedDraftRef.current)) {
-      try {
-        await enqueueSave(nextDraft, { waitForResult: true });
-      } catch {
-        return;
-      }
+    try {
+      await enqueueSave(nextDraft, { waitForResult: true });
+    } catch {
+      return;
     }
 
     try {
@@ -1878,7 +1854,6 @@ function TaskEditorDialog({
       setMoveProjectQuery("");
       setDestinationProjectId("");
       setSaveError(null);
-      setSaveStatus("saved");
     } catch (error) {
       if (!isMountedRef.current) {
         return;
@@ -1896,9 +1871,12 @@ function TaskEditorDialog({
     };
     const hasTransientDraft = mergeUniqueTags(selectedTags, tagInputValue, tagInputColor) !== selectedTags;
 
-    if (!hasTransientDraft && areTaskEditorDraftsEqual(committedDraft, persistedDraftRef.current)) {
+    if (
+      !saveLoopPromiseRef.current &&
+      !hasTransientDraft &&
+      areTaskEditorDraftsEqual(committedDraft, persistedDraftRef.current)
+    ) {
       setSaveError(null);
-      setSaveStatus("saved");
       onClose();
       return;
     }
@@ -1912,15 +1890,10 @@ function TaskEditorDialog({
     try {
       const nextDraft = commitTransientTagDraft();
 
-      if (!areTaskEditorDraftsEqual(nextDraft, persistedDraftRef.current)) {
-        try {
-          await enqueueSave(nextDraft, { waitForResult: true });
-        } catch {
-          return;
-        }
-      } else {
-        setSaveError(null);
-        setSaveStatus("saved");
+      try {
+        await enqueueSave(nextDraft, { waitForResult: true });
+      } catch {
+        return;
       }
 
       if (!isMountedRef.current) {
@@ -1967,14 +1940,6 @@ function TaskEditorDialog({
   }, [isMovePopoverOpen]);
 
   useEffect(() => {
-    if (saveStatus === "saving" || saveError !== null) {
-      return;
-    }
-
-    setSaveStatus(hasAnyUnsavedChanges() ? "dirty" : "saved");
-  }, [body, saveError, saveStatus, selectedTags, tagInputColor, tagInputValue, title]);
-
-  useEffect(() => {
     if (moveError === null) {
       return;
     }
@@ -1997,15 +1962,6 @@ function TaskEditorDialog({
       }
     };
   }, []);
-
-  const saveStatusMessage =
-    saveStatus === "dirty"
-      ? "Unsaved changes"
-      : saveStatus === "saving"
-        ? "Saving..."
-        : saveStatus === "error"
-          ? "Save failed"
-          : "All changes saved";
 
   return (
     <div
@@ -2194,17 +2150,6 @@ function TaskEditorDialog({
               </div>
             </dl>
             <div className="task-editor__footer-actions">
-              <div
-                aria-atomic="true"
-                aria-live="polite"
-                className={`task-editor__save-status task-editor__save-status--${saveStatus}`}
-                data-state={saveStatus}
-                data-testid="task-editor-save-status"
-                role="status"
-              >
-                {saveStatus === "saving" ? <span aria-hidden="true" className="status-ping" /> : null}
-                <span>{saveStatusMessage}</span>
-              </div>
               <div className="dialog-actions task-editor__actions">
                 <div className="task-editor__move-shell" ref={movePopoverRef}>
                   <button
@@ -2347,7 +2292,7 @@ function TaskEditorDialog({
                                 destinationProject === null ||
                                 destinationLanePreview === null ||
                                 isMovePending ||
-                                saveStatus === "saving"
+                                isSavePending
                               }
                               onClick={() => {
                                 void handleMove();
@@ -2365,8 +2310,13 @@ function TaskEditorDialog({
                 <button className="primary-button task-editor__close-button" onClick={() => requestCloseRef.current()} type="button">
                   Close
                 </button>
-                <button className="primary-button" disabled={saveStatus === "saving" || title.trim().length === 0} type="submit">
-                  {saveStatus === "saving" ? "Saving..." : "Save card"}
+                <button
+                  aria-busy={isSavePending}
+                  className="primary-button task-editor__save-button"
+                  disabled={isSavePending || title.trim().length === 0}
+                  type="submit"
+                >
+                  Save card
                 </button>
               </div>
             </div>
