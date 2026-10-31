@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../app.js";
 import {
@@ -14,6 +14,7 @@ const tag = (label: string, color: "amber" | "coral" | "moss" | "orchid" | "sky"
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   while (createdApps.length > 0) {
     const app = createdApps.pop();
     if (app) {
@@ -23,6 +24,73 @@ afterEach(async () => {
 });
 
 describe("projects and tasks API", () => {
+  it("ignores duplicate task content updates without changing task or project timestamps", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    let now = Date.parse("2026-10-31T12:00:00.000Z");
+    vi.setSystemTime(now);
+    const oidc = createMutableMockOidcProvider({
+      subject: "user-1",
+      email: "one@example.com",
+      displayName: "User One"
+    });
+    const app = buildApp({ config: testConfig, oidcProvider: oidc.provider, sqlitePath: ":memory:" });
+    createdApps.push(app);
+    const session = await loginWithOidc(app);
+    const cookies = { bbtodo_session: session.sessionCookie };
+    const projectResponse = await app.inject({
+      method: "POST", url: "/api/v1/projects", cookies, payload: { name: "Autosave board" }
+    });
+    const project = projectResponse.json();
+    const taskResponse = await app.inject({
+      method: "POST", url: `/api/v1/projects/${project.id}/tasks`, cookies,
+      payload: { title: "Review retries", body: "Initial body", tags: [tag("backend", "sky"), tag("retry")] }
+    });
+    expect(taskResponse.statusCode).toBe(201);
+    let task = taskResponse.json();
+    const taskUrl = `/api/v1/projects/${project.id}/tasks/${task.id}`;
+
+    for (const [index, change] of [
+      { title: "Review retries" },
+      { title: "Review final retries" },
+      { body: "Updated body" },
+      { tags: [tag("backend", "coral"), tag("retry")] },
+      { tags: [tag("backend", "coral"), tag("rollout")] },
+      { tags: [tag("rollout"), tag("backend", "coral")] },
+      { tags: [] }
+    ].entries()) {
+      now += 1000;
+      vi.setSystemTime(now);
+      const updateResponse = await app.inject({ method: "PATCH", url: taskUrl, cookies, payload: change });
+      expect(updateResponse.statusCode).toBe(200);
+      const updatedTask = updateResponse.json();
+      if (index > 0) {
+        expect(updatedTask.updatedAt).toBe(new Date(now).toISOString());
+        expect(updatedTask.updatedAt).not.toBe(task.updatedAt);
+      } else {
+        expect(updatedTask).toEqual(task);
+      }
+      task = updatedTask;
+      const projectsBeforeDuplicate = await app.inject({ method: "GET", url: "/api/v1/projects", cookies });
+
+      now += 1000;
+      vi.setSystemTime(now);
+      const duplicateResponse = await app.inject({
+        method: "PATCH", url: taskUrl, cookies,
+        payload: {
+          body: task.body,
+          tags: task.tags.map((taskTag: { color: string; label: string }) => ({
+            ...taskTag, label: `  ${taskTag.label}  `
+          })),
+          title: `  ${task.title}  `
+        }
+      });
+      expect(duplicateResponse.statusCode).toBe(200);
+      expect(duplicateResponse.json()).toEqual(task);
+      const projectsAfterDuplicate = await app.inject({ method: "GET", url: "/api/v1/projects", cookies });
+      expect(projectsAfterDuplicate.json()).toEqual(projectsBeforeDuplicate.json());
+    }
+  });
+
   it("lists todo-lane tasks across projects grouped by board", async () => {
     const oidc = createMutableMockOidcProvider({
       subject: "user-1",

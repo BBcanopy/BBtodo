@@ -2980,35 +2980,6 @@ textarea:focus {
   box-shadow: 0 16px 34px -18px color-mix(in srgb, var(--ink) 46%, transparent);
 }
 
-.task-editor__save-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-  min-height: auto;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  color: var(--ink-soft);
-  font-size: 0.74rem;
-  font-weight: 600;
-  line-height: 1.3;
-  text-align: right;
-}
-
-.task-editor__save-status--dirty {
-  color: var(--ink);
-}
-
-.task-editor__save-status--error {
-  border-color: rgba(191, 83, 62, 0.26);
-  color: var(--danger);
-}
-
-.task-editor__save-status--saving {
-  color: var(--accent-strong);
-}
-
 .field--editor {
   min-height: 100%;
   gap: 0.5rem;
@@ -4127,10 +4098,6 @@ textarea:focus {
   .dialog-panel--task-editor .task-editor__meta-item time {
     font-size: 0.76rem;
     line-height: 1.3;
-  }
-
-  .dialog-panel--task-editor .task-editor__save-status {
-    font-size: 0.72rem;
   }
 
   .dialog-panel--task-editor .task-editor__actions .primary-button,

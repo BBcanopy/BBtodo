@@ -1603,6 +1603,20 @@ export function updateOwnedTask(
     input.position !== undefined ||
     placement.lane.id !== task.laneId ||
     nextParentTaskId !== task.parentTaskId;
+  const nextTags = input.tags === undefined ? task.tags : normalizeTaskTags(input.tags);
+  if (
+    !shouldReorder &&
+    (input.title ?? task.title) === task.title &&
+    (input.body ?? task.body) === task.body &&
+    nextTags.length === task.tags.length &&
+    nextTags.every((tag, index) => tag.label === task.tags[index]?.label && tag.color === task.tags[index]?.color)
+  ) {
+    return {
+      status: "updated" as const,
+      task
+    };
+  }
+
   if (shouldReorder) {
     const laneTaskIds = listSiblingTaskIds(db, {
       excludedTaskId:
