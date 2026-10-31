@@ -723,7 +723,7 @@ test("board page autosaves cards and filters tasks", async ({ page }) => {
   await expect(page.getByText("Review retry scope")).toHaveCount(0);
 });
 
-test("board page keeps save controls steady and deduplicates repeated saves", async ({ page }) => {
+test("board page keeps the save label steady and disables saves during autosave", async ({ page }) => {
   await mockAuthenticated(page, { projects: projectsForGrid, tasks });
   let releaseSave!: () => void;
   const saveGate = new Promise<void>((resolve) => { releaseSave = resolve; });
@@ -748,14 +748,14 @@ test("board page keeps save controls steady and deduplicates repeated saves", as
   await saveRequest;
 
   try {
-    await expect(saveButton).toBeEnabled();
+    await expect(saveButton).toBeDisabled();
     await expect(saveButton).toHaveText("Save card");
     await expect(editDialog.getByText(/Unsaved changes|All changes saved|Saving\.\.\./)).toHaveCount(0);
     await expect(editDialog.getByTestId("task-editor-save-status")).toHaveCount(0);
     expect(await saveButton.boundingBox()).toEqual(initialButtonBox);
     expect(await saveButton.evaluate((element) => getComputedStyle(element).backgroundImage)).toBe(initialBackground);
     await expect(updatedTime).toHaveText("2026-03-18T07:10:00.000Z");
-    await saveButton.click({ clickCount: 3 });
+    await saveButton.click({ force: true, clickCount: 3 });
     expect(savedDrafts).toHaveLength(1);
   } finally {
     releaseSave();
@@ -801,7 +801,7 @@ for (const revertToOriginal of [false, true]) {
     await firstSave;
     try {
       await titleField.fill(nextTitle);
-      await editDialog.getByRole("button", { name: "Save card" }).click({ clickCount: 3 });
+      await expect(editDialog.getByRole("button", { name: "Save card" })).toBeDisabled();
       await editDialog.getByRole("button", { exact: true, name: "Close" }).click();
       await expect(editDialog).toBeVisible();
       expect(savedTitles).toHaveLength(1);
@@ -836,7 +836,7 @@ test("board page flushes pending task edits when closing the dialog", async ({ p
 
   await saveRequest;
   await expect(editDialog).toBeVisible();
-  await expect(editDialog.getByRole("button", { name: "Save card" })).toBeEnabled();
+  await expect(editDialog.getByRole("button", { name: "Save card" })).toBeDisabled();
   await expect(editDialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/projects\/BILL$/);
 
@@ -863,6 +863,7 @@ test("board page keeps autosave failures open and allows manual retry", async ({
   await editDialog.getByLabel("Title").fill("Review retry rollout");
   await expect(editDialog.getByText("Task save failed.")).toBeVisible();
   await expect(editDialog).toBeVisible();
+  await expect(editDialog.getByRole("button", { name: "Save card" })).toBeEnabled();
 
   await editDialog.getByRole("button", { name: "Save card" }).click();
   await expect(editDialog.getByText("Task save failed.")).toHaveCount(0);

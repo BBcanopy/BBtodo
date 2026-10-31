@@ -2310,7 +2310,7 @@ function TaskEditorDialog({
                 <button className="primary-button task-editor__close-button" onClick={() => requestCloseRef.current()} type="button">
                   Close
                 </button>
-                <button className="primary-button" disabled={title.trim().length === 0} type="submit">
+                <button className="primary-button" disabled={isSavePending || title.trim().length === 0} type="submit">
                   Save card
                 </button>
               </div>
