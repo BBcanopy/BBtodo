@@ -594,18 +594,16 @@ h3 {
 }
 
 .subnav__archive-action {
-  display: inline-flex;
-  align-items: center;
+  display: inline-grid;
+  place-items: center;
   flex: 0 0 auto;
-  gap: 0.45rem;
-  min-height: 2.5rem;
-  padding: 0.5rem 0.1rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
   border: 0;
   background: transparent;
   box-shadow: none;
   color: var(--ink-soft);
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 .subnav__archive-action:disabled {

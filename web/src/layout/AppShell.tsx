@@ -645,10 +645,14 @@ export function AppShell({ user }: { user: User }) {
                       className="subnav__archive-action"
                       disabled={isProjectMutationPending}
                       onClick={() => archiveProjectMutation.mutate(activeProject)}
+                      title={
+                        activeProject.archived
+                          ? "Unarchive project: show it in active project lists and TODOs."
+                          : "Archive project: hide it from active project lists and TODOs."
+                      }
                       type="button"
                     >
                       <ArchiveIcon restore={activeProject.archived} />
-                      <span>{activeProject.archived ? "Unarchive" : "Acrhive"}</span>
                     </button>
                   ) : null}
                 </div>

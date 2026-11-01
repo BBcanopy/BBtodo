@@ -84,7 +84,7 @@ for (const viewport of [
   { name: "desktop", width: 1440, height: 900 },
   { name: "mobile", width: 390, height: 844 }
 ]) {
-  test(`archive actions use plain labels after the tag filter on ${viewport.name}`, async ({ page }) => {
+  test(`archive icons explain their action on hover after the tag filter on ${viewport.name}`, async ({ page }) => {
     const mixedProjects = projectsForGrid.map((project) => ({ ...project, archived: project.id === "project-1" }));
     await mockAuthenticated(page, { projects: mixedProjects });
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -99,7 +99,12 @@ for (const viewport of [
     for (const verb of ["Archive", "Unarchive"]) {
       const action = page.getByRole("button", { name: `${verb} board Roadmap review`, exact: true });
       await expect(action).toBeEnabled();
-      await expect(action).toHaveText(verb === "Archive" ? "Acrhive" : "Unarchive");
+      await expect(action).toHaveText("");
+      await expect(action.locator("svg")).toBeVisible();
+      await action.hover();
+      await expect(action).toHaveAttribute("title", verb === "Archive"
+        ? "Archive project: hide it from active project lists and TODOs."
+        : "Unarchive project: show it in active project lists and TODOs.");
       await expect(action).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
       await expect(action).toHaveCSS("box-shadow", "none");
       await expect(action).toHaveCSS("border-top-width", "0px");
