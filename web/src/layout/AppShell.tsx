@@ -30,7 +30,8 @@ import {
   parseExactTicketId,
   parseSingleTagInput
 } from "../app/utils";
-import { ArchiveIcon, ChevronDownIcon, CloseIcon, ErrorBanner, PencilIcon, ToastNotice } from "../components/ui";
+import { ChevronDownIcon, CloseIcon, ErrorBanner, PencilIcon, ToastNotice } from "../components/ui";
+import { ProjectSettings } from "../components/ProjectSettings";
 import { useDismissableLayer } from "../hooks/useDismissableLayer";
 
 interface AppToast {
@@ -49,7 +50,6 @@ export function AppShell({ user }: { user: User }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProjectSwitcherOpen, setIsProjectSwitcherOpen] = useState(false);
   const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
-  const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
   const [projectSwitcherInput, setProjectSwitcherInput] = useState("");
   const [toast, setToast] = useState<AppToast | null>(null);
   const [gravatarUrl, setGravatarUrl] = useState<string | null>(null);
@@ -59,8 +59,6 @@ export function AppShell({ user }: { user: User }) {
   const projectSwitcherRef = useRef<HTMLDivElement | null>(null);
   const tagFilterRef = useRef<HTMLDivElement | null>(null);
   const tagFilterInputRef = useRef<HTMLInputElement | null>(null);
-  const archiveControlRef = useRef<HTMLDivElement | null>(null);
-  const archiveButtonRef = useRef<HTMLButtonElement | null>(null);
   const navSearchLookupRequestRef = useRef(0);
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -134,6 +132,23 @@ export function AppShell({ user }: { user: User }) {
       });
     }
   });
+  const deleteProjectMutation = useMutation({
+    mutationFn: (project: Project) => api.deleteProject(project.id),
+    onSuccess: async (_result, project) => {
+      queryClient.setQueriesData<Project[]>({ queryKey: ["projects"] }, (current) =>
+        current?.filter((candidate) => candidate.id !== project.id)
+      );
+      setToast({ message: `Deleted board ${project.name}.`, title: "Board deleted", tone: "success" });
+      navigate("/", { replace: true });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        queryClient.invalidateQueries({ queryKey: ["todos"] })
+      ]);
+    },
+    onError: (error) => {
+      setToast({ message: error.message, title: "Could not delete project", tone: "danger" });
+    }
+  });
   const themeMutation = useMutation({
     mutationFn: api.updateTheme,
     onSuccess: (updatedUser) => {
@@ -201,21 +216,14 @@ export function AppShell({ user }: { user: User }) {
   }, [deferredProjectSwitcherInput, projectsQuery.data]);
   const hasProjectInput = projectSwitcherInput.trim().length > 0;
   const isProjectMutationPending =
-    createProjectMutation.isPending || renameProjectMutation.isPending || archiveProjectMutation.isPending;
+    createProjectMutation.isPending ||
+    renameProjectMutation.isPending ||
+    archiveProjectMutation.isPending ||
+    deleteProjectMutation.isPending;
 
   useDismissableLayer(isMenuOpen, menuRef, () => setIsMenuOpen(false));
   useDismissableLayer(isProjectSwitcherOpen, projectSwitcherRef, () => setIsProjectSwitcherOpen(false));
   useDismissableLayer(isTagFilterOpen, tagFilterRef, () => setIsTagFilterOpen(false));
-  useDismissableLayer(isArchiveConfirmOpen, archiveControlRef, closeArchiveConfirmation);
-
-  function closeArchiveConfirmation() {
-    setIsArchiveConfirmOpen(false);
-    archiveButtonRef.current?.focus();
-  }
-
-  useEffect(() => {
-    setIsArchiveConfirmOpen(false);
-  }, [boardMatch?.params.projectTicketPrefix]);
 
   useEffect(() => {
     if (isProjectSwitcherOpen) {
@@ -223,8 +231,12 @@ export function AppShell({ user }: { user: User }) {
     }
 
     setProjectSwitcherInput("");
-    createProjectMutation.reset();
-    renameProjectMutation.reset();
+    if (!createProjectMutation.isPending) {
+      createProjectMutation.reset();
+    }
+    if (!renameProjectMutation.isPending) {
+      renameProjectMutation.reset();
+    }
   }, [isProjectSwitcherOpen]);
 
   useEffect(() => {
@@ -651,59 +663,14 @@ export function AppShell({ user }: { user: User }) {
                     </div>
                   ) : null}
                   {activeProject ? (
-                    <div className="subnav__archive-control" ref={archiveControlRef}>
-                      <button
-                        aria-controls={isArchiveConfirmOpen ? "archive-project-confirmation" : undefined}
-                        aria-expanded={activeProject.archived ? undefined : isArchiveConfirmOpen}
-                        aria-haspopup={activeProject.archived ? undefined : "dialog"}
-                        aria-label={`${activeProject.archived ? "Unarchive" : "Archive"} board ${activeProject.name}`}
-                        className="subnav__archive-action"
-                        disabled={isProjectMutationPending}
-                        onClick={() => {
-                          if (activeProject.archived) {
-                            archiveProjectMutation.mutate(activeProject);
-                          } else {
-                            setIsArchiveConfirmOpen((current) => !current);
-                          }
-                        }}
-                        ref={archiveButtonRef}
-                        title={
-                          activeProject.archived
-                            ? "Unarchive project: show it in active project lists and TODOs."
-                            : "Archive project: hide it from active project lists and TODOs."
-                        }
-                        type="button"
-                      >
-                        <ArchiveIcon restore={activeProject.archived} />
-                      </button>
-                      {isArchiveConfirmOpen && !activeProject.archived ? (
-                        <div
-                          aria-label={`Archive project ${activeProject.name}`}
-                          className="task-delete-popover subnav__archive-confirmation"
-                          id="archive-project-confirmation"
-                          role="alertdialog"
-                        >
-                          <p>Archive {activeProject.name}?</p>
-                          <p>It will be hidden. This action can be reverted</p>
-                          <div className="task-delete-popover__actions">
-                            <button autoFocus className="text-button" onClick={closeArchiveConfirmation} type="button">
-                              Cancel
-                            </button>
-                            <button
-                              className="ghost-button danger-button"
-                              disabled={isProjectMutationPending}
-                              onClick={() => {
-                                closeArchiveConfirmation();
-                                archiveProjectMutation.mutate(activeProject);
-                              }}
-                              type="button"
-                            >
-                              Archive
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
+                    <ProjectSettings
+                      disabled={isProjectMutationPending}
+                      key={activeProject.id}
+                      onArchive={() => archiveProjectMutation.mutate(activeProject)}
+                      onDelete={() => deleteProjectMutation.mutate(activeProject)}
+                      onRename={(name) => renameProjectMutation.mutateAsync({ name, projectId: activeProject.id })}
+                      project={activeProject}
+                    />
                   ) : null}
                 </div>
               ) : null}

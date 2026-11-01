@@ -4,6 +4,7 @@ import { mockAuthenticated, projects, projectsForGrid } from "./fixtures";
 
 async function acceptArchiveConfirmation(page: Page, trigger: () => Promise<void>) {
   await trigger();
+  await page.getByRole("menu", { name: "Project settings", exact: true }).getByRole("menuitem", { name: "Archive", exact: true }).click();
   const confirmation = page.getByRole("alertdialog", { name: /^Archive project / });
   await expect(confirmation).toBeVisible();
   await expect(confirmation).toBeInViewport({ ratio: 1 });
@@ -32,9 +33,10 @@ test("archiving reuses deletion confirmation styling and dismissing leaves the p
   const deletionAppearance = await page.getByRole("alertdialog").evaluate(readAppearance);
   await page.getByRole("alertdialog").getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByTestId("project-card-project-1").click();
-  const action = page.getByRole("button", { name: "Archive board Billing cleanup", exact: true });
+  const action = page.getByRole("button", { name: "Project settings", exact: true });
 
   await action.click();
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
   const dialog = page.getByRole("alertdialog", { name: "Archive project Billing cleanup", exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("Archive Billing cleanup?");
@@ -46,19 +48,23 @@ test("archiving reuses deletion confirmation styling and dismissing leaves the p
   await expect(dialog).toHaveCount(0);
   await expect(action).toBeFocused();
   await action.press("Space");
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).press("Enter");
   await expect(dialog).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(action).toBeFocused();
   await action.click();
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
   await page.getByLabel("Search cards").click();
   await expect(dialog).toHaveCount(0);
   await expect(action).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Unarchive board Billing cleanup", exact: true })).toHaveCount(0);
   expect(archiveUpdates).toBe(0);
 
   await acceptArchiveConfirmation(page, () => action.click());
-  await expect(page.getByRole("button", { name: "Unarchive board Billing cleanup", exact: true })).toBeEnabled();
+  await expect(page.getByTestId("toast-notice")).toContainText("Board archived");
+  await action.click();
+  await expect(page.getByRole("menuitem", { name: "Unarchive", exact: true })).toBeEnabled();
+  await page.keyboard.press("Escape");
   expect(archiveUpdates).toBe(1);
   expect(browserDialogs).toBe(0);
 });
@@ -70,11 +76,11 @@ test("project archiving hides the last active board and cached TODOs, then resto
   await expect(page.getByTestId("todo-project-group-project-1")).toBeVisible();
 
   await page.getByRole("link", { name: "Projects", exact: true }).click();
-  await expect(page.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Project settings", exact: true })).toHaveCount(0);
   await page.getByTestId("project-card-project-1").click();
   await expect(page.getByRole("dialog", { name: "Project switcher" })).toHaveCount(0);
   await acceptArchiveConfirmation(page, () =>
-    page.getByRole("button", { name: "Archive board Billing cleanup", exact: true }).click()
+    page.getByRole("button", { name: "Project settings", exact: true }).click()
   );
   await expect(page).toHaveURL("/projects/BILL");
   await expect(page.getByTestId("toast-notice")).toContainText("Board archived");
@@ -95,9 +101,10 @@ test("project archiving hides the last active board and cached TODOs, then resto
   await showArchived.check();
   const card = page.getByTestId("project-card-project-1");
   await expect(card.getByText("Archived", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Project settings", exact: true })).toHaveCount(0);
   await card.click();
-  await page.getByRole("button", { name: "Unarchive board Billing cleanup", exact: true }).press("Enter");
+  await page.getByRole("button", { name: "Project settings", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Unarchive", exact: true }).press("Enter");
   await expect(page).toHaveURL("/projects/BILL");
   await expect(page.getByTestId("toast-notice")).toContainText("Board unarchived");
   await page.getByRole("link", { name: "Projects", exact: true }).click();
@@ -147,27 +154,25 @@ for (const viewport of [
   { name: "desktop", width: 1440, height: 900 },
   { name: "mobile", width: 390, height: 844 }
 ]) {
-  test(`archive icons explain their action on hover after the tag filter on ${viewport.name}`, async ({ page }) => {
+  test(`project settings offer archive, delete, and rename after the tag filter on ${viewport.name}`, async ({ page }) => {
     const mixedProjects = projectsForGrid.map((project) => ({ ...project, archived: project.id === "project-1" }));
     await mockAuthenticated(page, { projects: mixedProjects });
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto("/?showArchived=true");
     await expect(page.getByTestId("project-card-project-1").getByText("Archived", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Project settings", exact: true })).toHaveCount(0);
     await page.getByLabel("Open project switcher").click();
     await expect(page.getByRole("dialog", { name: "Project switcher" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Project settings", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Open project Roadmap review", exact: true }).click();
 
     for (const verb of ["Archive", "Unarchive"]) {
-      const action = page.getByRole("button", { name: `${verb} board Roadmap review`, exact: true });
+      const action = page.getByRole("button", { name: "Project settings", exact: true });
       await expect(action).toBeEnabled();
       await expect(action).toHaveText("");
       await expect(action.locator("svg")).toBeVisible();
       await action.hover();
-      await expect(action).toHaveAttribute("title", verb === "Archive"
-        ? "Archive project: hide it from active project lists and TODOs."
-        : "Unarchive project: show it in active project lists and TODOs.");
+      await expect(action).toHaveAttribute("title", "Project settings");
       await expect(action).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
       await expect(action).toHaveCSS("box-shadow", "none");
       await expect(action).toHaveCSS("border-top-width", "0px");
@@ -189,15 +194,21 @@ for (const viewport of [
       await page.getByLabel("Open project switcher").click();
       const menu = page.getByRole("dialog", { name: "Project switcher" });
       await expect(menu).toBeVisible();
-      await expect(menu.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
+      await expect(menu.getByRole("button", { name: "Project settings", exact: true })).toHaveCount(0);
       await page.getByLabel("Open project switcher").click();
+      await action.click();
+      const settingsMenu = page.getByRole("menu", { name: "Project settings", exact: true });
+      await expect(settingsMenu.getByRole("menuitem")).toHaveText([verb, "Delete", "Rename"]);
+      await expect(settingsMenu).toBeInViewport({ ratio: 1 });
+      await page.keyboard.press("Escape");
+      await expect(action).toBeFocused();
       if (verb === "Archive") {
         await acceptArchiveConfirmation(page, () => action.click());
       }
     }
 
     await page.getByRole("link", { name: "Projects", exact: true }).click();
-    await expect(page.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Project settings", exact: true })).toHaveCount(0);
   });
 }
 
@@ -205,11 +216,11 @@ for (const viewport of [
   { name: "wide desktop", width: 1920, height: 1080 },
   { name: "mobile", width: 390, height: 844 }
 ]) {
-  test(`archive controls preserve the original search and tag widths on ${viewport.name}`, async ({ page }) => {
+  test(`project settings preserve the original search and tag widths on ${viewport.name}`, async ({ page }) => {
     await mockAuthenticated(page);
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto("/projects/BILL");
-    await expect(page.getByRole("button", { name: "Archive board Billing cleanup", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Project settings", exact: true })).toBeVisible();
     const boardSearch = await page.getByLabel("Search cards").boundingBox();
     const boardTags = await page.locator(".subnav__search--tag-filter").boundingBox();
     await page.getByRole("link", { name: "TODOs", exact: true }).click();
@@ -239,9 +250,10 @@ for (const archived of [false, true]) {
     });
     const path = "/projects/BILL";
     await page.goto(path);
-    const action = page.getByRole("button", { name: `${archived ? "Unarchive" : "Archive"} board Billing cleanup`, exact: true });
+    const action = page.getByRole("button", { name: "Project settings", exact: true });
     if (archived) {
       await action.press("Space");
+      await page.getByRole("menuitem", { name: "Unarchive", exact: true }).press("Enter");
     } else {
       await acceptArchiveConfirmation(page, () => action.press("Space"));
     }

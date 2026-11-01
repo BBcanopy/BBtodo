@@ -72,6 +72,20 @@ export function ArchiveIcon({ restore = false }: { restore?: boolean }) {
   );
 }
 
+export function SettingsIcon() {
+  return (
+    <SvgIcon>
+      <path
+        d="M10 3h4l.6 2.8 1.4.8 2.7-.8 2 3.4-2.1 1.9v1.8l2.1 1.9-2 3.4-2.7-.8-1.4.8L14 21h-4l-.6-2.8-1.4-.8-2.7.8-2-3.4 2.1-1.9v-1.8L3.3 9.2l2-3.4 2.7.8 1.4-.8L10 3Z"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
+      />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7" />
+    </SvgIcon>
+  );
+}
+
 export function ExpandIcon({ className }: { className?: string }) {
   return (
     <SvgIcon className={className}>

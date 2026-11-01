@@ -593,13 +593,13 @@ h3 {
   transform: translateY(1px) scale(0.98);
 }
 
-.subnav__archive-control {
+.subnav__settings-control {
   position: relative;
   flex: 0 0 auto;
   z-index: 10;
 }
 
-.subnav__archive-action {
+.subnav__settings-action {
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
@@ -612,11 +612,17 @@ h3 {
   color: var(--ink-soft);
 }
 
-.subnav__archive-action:disabled {
+.subnav__settings-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.subnav__settings-action:disabled {
   opacity: 0.55;
 }
 
-.task-delete-popover.subnav__archive-confirmation {
+.task-delete-popover.subnav__settings-panel {
   width: min(20rem, calc(100vw - 2rem));
   min-width: 0;
   overflow-wrap: anywhere;
@@ -3846,12 +3852,12 @@ textarea:focus {
     margin-left: 0;
   }
 
-  .subnav__archive-control {
+  .subnav__settings-control {
     position: static;
     margin-left: auto;
   }
 
-  .task-delete-popover.subnav__archive-confirmation {
+  .task-delete-popover.subnav__settings-panel {
     width: 100%;
   }
 
