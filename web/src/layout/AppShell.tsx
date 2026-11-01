@@ -644,7 +644,17 @@ export function AppShell({ user }: { user: User }) {
                       aria-label={`${activeProject.archived ? "Unarchive" : "Archive"} board ${activeProject.name}`}
                       className="subnav__archive-action"
                       disabled={isProjectMutationPending}
-                      onClick={() => archiveProjectMutation.mutate(activeProject)}
+                      onClick={() => {
+                        if (
+                          !activeProject.archived &&
+                          !window.confirm(
+                            `Archive project "${activeProject.name}"?\n\nIt will be hidden from active project lists and TODOs. You can unarchive it later.`
+                          )
+                        ) {
+                          return;
+                        }
+                        archiveProjectMutation.mutate(activeProject);
+                      }}
                       title={
                         activeProject.archived
                           ? "Unarchive project: show it in active project lists and TODOs."

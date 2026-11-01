@@ -1,6 +1,43 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { mockAuthenticated, projects, projectsForGrid } from "./fixtures";
+
+async function acceptArchiveConfirmation(page: Page, trigger: () => Promise<void>) {
+  const confirmation = page.waitForEvent("dialog");
+  const triggered = trigger();
+  await (await confirmation).accept();
+  await triggered;
+}
+
+test("archiving requires confirmation and cancelling leaves the project unchanged", async ({ page }) => {
+  await mockAuthenticated(page);
+  let archiveUpdates = 0;
+  page.on("request", (request) => {
+    if (request.method() === "PATCH" && request.url().endsWith("/api/v1/projects/project-1") && request.postDataJSON().archived) {
+      archiveUpdates += 1;
+    }
+  });
+  await page.goto("/projects/BILL");
+  const action = page.getByRole("button", { name: "Archive board Billing cleanup", exact: true });
+
+  const confirmation = page.waitForEvent("dialog");
+  const clicked = action.click();
+  const dialog = await confirmation;
+  expect(dialog.type()).toBe("confirm");
+  expect(dialog.message()).toContain('Archive project "Billing cleanup"?');
+  expect(dialog.message()).toContain("hidden from active project lists and TODOs");
+  expect(dialog.message()).toContain("You can unarchive it later.");
+  expect(archiveUpdates).toBe(0);
+  await dialog.dismiss();
+  await clicked;
+  await expect(action).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Unarchive board Billing cleanup", exact: true })).toHaveCount(0);
+  expect(archiveUpdates).toBe(0);
+
+  await acceptArchiveConfirmation(page, () => action.click());
+  await expect(page.getByRole("button", { name: "Unarchive board Billing cleanup", exact: true })).toBeEnabled();
+  expect(archiveUpdates).toBe(1);
+});
 
 test("project archiving hides the last active board and cached TODOs, then restores both", async ({ page }) => {
   await mockAuthenticated(page);
@@ -12,7 +49,9 @@ test("project archiving hides the last active board and cached TODOs, then resto
   await expect(page.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
   await page.getByTestId("project-card-project-1").click();
   await expect(page.getByRole("dialog", { name: "Project switcher" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Archive board Billing cleanup", exact: true }).click();
+  await acceptArchiveConfirmation(page, () =>
+    page.getByRole("button", { name: "Archive board Billing cleanup", exact: true }).click()
+  );
   await expect(page).toHaveURL("/projects/BILL");
   await expect(page.getByTestId("toast-notice")).toContainText("Board archived");
   await expect(page.getByTestId("board-grid")).toBeVisible();
@@ -124,7 +163,7 @@ for (const viewport of [
       await expect(menu.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
       await page.getByLabel("Open project switcher").click();
       if (verb === "Archive") {
-        await action.click();
+        await acceptArchiveConfirmation(page, () => action.click());
       }
     }
 
@@ -149,7 +188,11 @@ for (const archived of [false, true]) {
     const path = "/projects/BILL";
     await page.goto(path);
     const action = page.getByRole("button", { name: `${archived ? "Unarchive" : "Archive"} board Billing cleanup`, exact: true });
-    await action.press("Space");
+    if (archived) {
+      await action.press("Space");
+    } else {
+      await acceptArchiveConfirmation(page, () => action.press("Space"));
+    }
     await expect(action).toBeDisabled();
     await page.getByLabel("Open project switcher").click();
     const menu = page.getByRole("dialog", { name: "Project switcher" });
