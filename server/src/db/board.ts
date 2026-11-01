@@ -594,11 +594,19 @@ export function listTaskTagsForUser(db: DatabaseClient, userId: string) {
   );
 }
 
-export function listProjectsForUser(db: DatabaseClient, userId: string) {
+export function listProjectsForUser(
+  db: DatabaseClient,
+  userId: string,
+  options: { includeArchived?: boolean } = {}
+) {
   const projectRows = db
     .select()
     .from(projects)
-    .where(eq(projects.userId, userId))
+    .where(
+      options.includeArchived
+        ? eq(projects.userId, userId)
+        : and(eq(projects.userId, userId), eq(projects.archived, false))
+    )
     .orderBy(desc(projects.updatedAt))
     .all();
 
@@ -645,7 +653,7 @@ export function listTodoProjectGroupsForUser(db: DatabaseClient, userId: string)
   const projectRows = db
     .select()
     .from(projects)
-    .where(eq(projects.userId, userId))
+    .where(and(eq(projects.userId, userId), eq(projects.archived, false)))
     .orderBy(desc(projects.updatedAt))
     .all();
 
@@ -867,6 +875,7 @@ export function createProject(db: DatabaseClient, userId: string, name: string) 
     id: crypto.randomUUID(),
     userId,
     name,
+    archived: false,
     ticketPrefix: resolveProjectTicketPrefix(name, usedPrefixes),
     nextTicketNumber: 1,
     createdAt: now,
@@ -881,10 +890,11 @@ export function createProject(db: DatabaseClient, userId: string, name: string) 
   return project;
 }
 
-export function updateOwnedProjectName(
+export function updateOwnedProject(
   db: DatabaseClient,
   input: {
-    name: string;
+    name?: string;
+    archived?: boolean;
     projectId: string;
     userId: string;
   }
@@ -900,6 +910,7 @@ export function updateOwnedProjectName(
     .update(projects)
     .set({
       name: input.name,
+      archived: input.archived,
       updatedAt
     })
     .where(eq(projects.id, input.projectId))

@@ -190,6 +190,7 @@ function parseTicketPrefix(ticketId: string) {
 
 export const projects: Project[] = [
   {
+    archived: false,
     createdAt: "2026-03-17T09:00:00.000Z",
     id: "project-1",
     laneSummaries: createDefaultLaneSummaries("project-1", {
@@ -209,6 +210,7 @@ export const projectsForGrid: Project[] = [
   {
     createdAt: "2026-03-17T10:00:00.000Z",
     id: "project-2",
+    archived: false,
     laneSummaries: createDefaultLaneSummaries("project-2", {
       todo: 0,
       in_progress: 0,
@@ -222,6 +224,7 @@ export const projectsForGrid: Project[] = [
   {
     createdAt: "2026-03-17T11:00:00.000Z",
     id: "project-3",
+    archived: false,
     laneSummaries: createDefaultLaneSummaries("project-3", {
       todo: 2,
       in_progress: 1,
@@ -235,6 +238,7 @@ export const projectsForGrid: Project[] = [
   {
     createdAt: "2026-03-17T12:00:00.000Z",
     id: "project-4",
+    archived: false,
     laneSummaries: createDefaultLaneSummaries("project-4", {
       todo: 1,
       in_progress: 0,
@@ -248,6 +252,7 @@ export const projectsForGrid: Project[] = [
   {
     createdAt: "2026-03-17T12:30:00.000Z",
     id: "project-5",
+    archived: false,
     laneSummaries: createDefaultLaneSummaries("project-5", {
       todo: 3,
       in_progress: 1,
@@ -261,6 +266,7 @@ export const projectsForGrid: Project[] = [
   {
     createdAt: "2026-03-17T13:00:00.000Z",
     id: "project-6",
+    archived: false,
     laneSummaries: createDefaultLaneSummaries("project-6", {
       todo: 1,
       in_progress: 2,
@@ -579,6 +585,9 @@ export async function mockAuthenticated(
     syncAllProjects();
 
     return projectState.flatMap((project) => {
+      if (project.archived) {
+        return [];
+      }
       const todoLane = project.laneSummaries.find((lane) => normalizeLaneName(lane.name) === "todo");
       if (!todoLane) {
         return [];
@@ -862,6 +871,7 @@ export async function mockAuthenticated(
     const body = request.postDataJSON() as
       | {
           body?: string;
+          archived?: boolean;
           destinationLaneId?: string;
           laneId?: string;
           name?: string;
@@ -888,7 +898,9 @@ export async function mockAuthenticated(
         return;
       case "GET /api/v1/projects":
         syncAllProjects();
-        await fulfillJson(route, 200, projectState);
+        await fulfillJson(route, 200, projectState.filter(
+          (project) => url.searchParams.get("includeArchived") === "true" || !project.archived
+        ));
         return;
       case "GET /api/v1/todos":
         await fulfillJson(route, 200, listTodoGroups());
@@ -919,6 +931,7 @@ export async function mockAuthenticated(
         const resolvedPrefix = allocateFixtureTicketPrefix(projectName, new Set(projectTicketPrefixes.values()));
 
         const createdProject: Project = {
+          archived: false,
           createdAt: "2026-03-18T08:00:00.000Z",
           id: createdProjectId,
           laneSummaries: createDefaultLaneSummaries(createdProjectId, {
@@ -1081,6 +1094,7 @@ export async function mockAuthenticated(
       }
 
       project.name = body?.name ?? project.name;
+      project.archived = body?.archived ?? project.archived;
       project.updatedAt = "2026-03-18T08:12:00.000Z";
       syncProject(projectId);
       await fulfillJson(route, 200, project);

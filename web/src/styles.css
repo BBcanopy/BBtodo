@@ -593,6 +593,41 @@ h3 {
   transform: translateY(1px) scale(0.98);
 }
 
+.subnav__settings-control {
+  position: relative;
+  flex: 0 0 auto;
+  z-index: 10;
+}
+
+.subnav__settings-action {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink-soft);
+}
+
+.subnav__settings-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.subnav__settings-action:disabled {
+  opacity: 0.55;
+}
+
+.task-delete-popover.subnav__settings-panel {
+  width: min(20rem, calc(100vw - 2rem));
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .subnav__search {
   display: grid;
   gap: 0.35rem;
@@ -1514,6 +1549,29 @@ textarea:focus {
   align-items: center;
 }
 
+.projects-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.projects-archive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.projects-archive-toggle input {
+  width: 1rem;
+  height: 1rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 .project-grid {
   --project-card-column-width: 19rem;
   --project-card-gap: 1rem;
@@ -1593,6 +1651,7 @@ textarea:focus {
   display: grid;
   grid-template-rows: auto 1fr;
   gap: 0.8rem;
+  min-width: 0;
   min-height: 100%;
   padding-top: 0.1rem;
 }
@@ -1605,7 +1664,9 @@ textarea:focus {
 }
 
 .project-card__headline h2 {
+  min-width: 0;
   max-width: 12ch;
+  overflow-wrap: anywhere;
 }
 
 .project-card__meta {
@@ -3785,9 +3846,19 @@ textarea:focus {
   }
 
   .subnav__cluster--tools {
+    position: relative;
     flex-basis: 100%;
     justify-content: flex-start;
     margin-left: 0;
+  }
+
+  .subnav__settings-control {
+    position: static;
+    margin-left: auto;
+  }
+
+  .task-delete-popover.subnav__settings-panel {
+    width: 100%;
   }
 
   .subnav__current {

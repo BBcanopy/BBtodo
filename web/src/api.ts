@@ -24,6 +24,7 @@ export interface BoardLane {
 }
 
 export interface Project {
+  archived: boolean;
   createdAt: string;
   id: string;
   laneSummaries: BoardLane[];
@@ -172,8 +173,8 @@ export const api = {
   getTaskByTicketId(ticketId: string) {
     return request<Task>(`/api/v1/tasks/by-ticket/${encodeURIComponent(ticketId)}`);
   },
-  listProjects() {
-    return request<Project[]>("/api/v1/projects");
+  listProjects(includeArchived = false) {
+    return request<Project[]>(`/api/v1/projects${includeArchived ? "?includeArchived=true" : ""}`);
   },
   listTodoGroups() {
     return request<TodoProjectGroup[]>("/api/v1/todos");
@@ -201,7 +202,7 @@ export const api = {
       method: "PATCH"
     });
   },
-  updateProject(projectId: string, input: Pick<Project, "name">) {
+  updateProject(projectId: string, input: Partial<Pick<Project, "name" | "archived">>) {
     return request<Project>(`/api/v1/projects/${projectId}`, {
       body: JSON.stringify(input),
       method: "PATCH"

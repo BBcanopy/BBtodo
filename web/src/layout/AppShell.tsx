@@ -18,7 +18,7 @@ import {
   useSearchParams
 } from "react-router-dom";
 
-import { api, type TaskTag, type User } from "../api";
+import { api, type Project, type TaskTag, type User } from "../api";
 import { getTaskTagStyle } from "../app/tag-colors";
 import { themeOptions } from "../app/constants";
 import { useCreateProjectMutation } from "../hooks/useCreateProjectMutation";
@@ -31,6 +31,7 @@ import {
   parseSingleTagInput
 } from "../app/utils";
 import { ChevronDownIcon, CloseIcon, ErrorBanner, PencilIcon, ToastNotice } from "../components/ui";
+import { ProjectSettings } from "../components/ProjectSettings";
 import { useDismissableLayer } from "../hooks/useDismissableLayer";
 
 interface AppToast {
@@ -64,6 +65,11 @@ export function AppShell({ user }: { user: User }) {
     queryFn: () => api.listProjects(),
     enabled: Boolean(boardMatch || isProjectsRoute)
   });
+  const currentProjectQuery = useQuery({
+    queryKey: ["project", boardMatch?.params.projectTicketPrefix],
+    queryFn: () => api.getProjectByTicketPrefix(boardMatch?.params.projectTicketPrefix ?? ""),
+    enabled: Boolean(boardMatch)
+  });
   const taskTagsQuery = useQuery({
     queryKey: ["task-tags"],
     queryFn: () => api.listTaskTags(),
@@ -94,10 +100,53 @@ export function AppShell({ user }: { user: User }) {
   const renameProjectMutation = useMutation({
     mutationFn: ({ name, projectId }: { name: string; projectId: string }) =>
       api.updateProject(projectId, { name }),
-    onSuccess: async () => {
+    onSuccess: async (project) => {
       setIsProjectSwitcherOpen(false);
       setProjectSwitcherInput("");
-      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.setQueryData(["project", project.ticketPrefix], project);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        queryClient.invalidateQueries({ queryKey: ["todos"] })
+      ]);
+    }
+  });
+  const archiveProjectMutation = useMutation({
+    mutationFn: (project: Project) => api.updateProject(project.id, { archived: !project.archived }),
+    onSuccess: async (project) => {
+      queryClient.setQueryData(["project", project.ticketPrefix], project);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"], refetchType: "all" }),
+        queryClient.invalidateQueries({ queryKey: ["todos"] })
+      ]);
+      setToast({
+        message: `${project.archived ? "Archived" : "Unarchived"} board ${project.name}.`,
+        title: project.archived ? "Board archived" : "Board unarchived",
+        tone: "success"
+      });
+    },
+    onError: (error) => {
+      setToast({
+        message: error.message,
+        title: "Could not update archive status",
+        tone: "danger"
+      });
+    }
+  });
+  const deleteProjectMutation = useMutation({
+    mutationFn: (project: Project) => api.deleteProject(project.id),
+    onSuccess: async (_result, project) => {
+      queryClient.setQueriesData<Project[]>({ queryKey: ["projects"] }, (current) =>
+        current?.filter((candidate) => candidate.id !== project.id)
+      );
+      setToast({ message: `Deleted board ${project.name}.`, title: "Board deleted", tone: "success" });
+      navigate("/", { replace: true });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        queryClient.invalidateQueries({ queryKey: ["todos"] })
+      ]);
+    },
+    onError: (error) => {
+      setToast({ message: error.message, title: "Could not delete project", tone: "danger" });
     }
   });
   const themeMutation = useMutation({
@@ -143,12 +192,12 @@ export function AppShell({ user }: { user: User }) {
       }),
     [activeTagFilterKey, availableTagFilters, selectedTagFilterChip, tagFilterQuery]
   );
-  const activeProject =
-    boardMatch && projectsQuery.data
+  const activeProject = currentProjectQuery.data ??
+    (boardMatch && projectsQuery.data
       ? projectsQuery.data.find(
           (project) => project.ticketPrefix === boardMatch.params.projectTicketPrefix
         ) ?? null
-      : null;
+      : null);
   const projectSwitcherLabel = activeProject?.name ?? "All projects";
   const totalTodoCount = useMemo(
     () => (todosQuery.data ?? []).reduce((count, group) => count + group.tasks.length, 0),
@@ -167,7 +216,10 @@ export function AppShell({ user }: { user: User }) {
   }, [deferredProjectSwitcherInput, projectsQuery.data]);
   const hasProjectInput = projectSwitcherInput.trim().length > 0;
   const isProjectMutationPending =
-    createProjectMutation.isPending || renameProjectMutation.isPending;
+    createProjectMutation.isPending ||
+    renameProjectMutation.isPending ||
+    archiveProjectMutation.isPending ||
+    deleteProjectMutation.isPending;
 
   useDismissableLayer(isMenuOpen, menuRef, () => setIsMenuOpen(false));
   useDismissableLayer(isProjectSwitcherOpen, projectSwitcherRef, () => setIsProjectSwitcherOpen(false));
@@ -179,8 +231,12 @@ export function AppShell({ user }: { user: User }) {
     }
 
     setProjectSwitcherInput("");
-    createProjectMutation.reset();
-    renameProjectMutation.reset();
+    if (!createProjectMutation.isPending) {
+      createProjectMutation.reset();
+    }
+    if (!renameProjectMutation.isPending) {
+      renameProjectMutation.reset();
+    }
   }, [isProjectSwitcherOpen]);
 
   useEffect(() => {
@@ -605,6 +661,16 @@ export function AppShell({ user }: { user: User }) {
                         </div>
                       ) : null}
                     </div>
+                  ) : null}
+                  {activeProject ? (
+                    <ProjectSettings
+                      disabled={isProjectMutationPending}
+                      key={activeProject.id}
+                      onArchive={() => archiveProjectMutation.mutate(activeProject)}
+                      onDelete={() => deleteProjectMutation.mutate(activeProject)}
+                      onRename={(name) => renameProjectMutation.mutateAsync({ name, projectId: activeProject.id })}
+                      project={activeProject}
+                    />
                   ) : null}
                 </div>
               ) : null}

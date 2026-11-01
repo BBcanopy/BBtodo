@@ -313,7 +313,7 @@ test("project cards open on click and delete through a confirmation popover", as
   await expect(page.getByTestId("toast-notice")).toHaveCount(0);
   const deleteToast = page.getByTestId("toast-notice");
   await expect(projectCard).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "No boards yet." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No active boards." })).toBeVisible();
   await expect(deleteToast).toBeVisible();
   await expect(deleteToast).toContainText("Board deleted");
   await expect(deleteToast).toContainText("Deleted board Billing cleanup.");
@@ -498,6 +498,58 @@ test("projects page packs later cards beneath shorter neighbors when a title wra
       regularProjectStayedAtMinHeight: true
     });
 });
+
+for (const viewport of [
+  { name: "desktop", width: 1280, height: 900 },
+  { name: "mobile", width: 390, height: 844 }
+]) {
+  test(`project cards keep long unbroken titles clear of the delete button on ${viewport.name}`, async ({ page }) => {
+    const longTitle = "wfeegwegwehrehrtjjtrjtyiyukyuo".repeat(3);
+    await mockAuthenticated(page, {
+      projects: [{ ...projectsForGrid[0], name: longTitle }]
+    });
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto("/");
+
+    const card = page.getByTestId("project-card-project-1");
+    const heading = card.getByRole("heading", { name: longTitle, exact: true });
+    const deleteButton = card.getByRole("button", { name: `Delete board ${longTitle}`, exact: true });
+    await expect(heading).toHaveText(longTitle);
+    await waitForProjectGridCardsToFinishAnimating(page.locator(".project-grid"));
+
+    await expect.poll(async () => heading.evaluate((element) => {
+      const surface = element.closest(".project-card__surface")!;
+      const action = surface.querySelector(".project-card__delete-menu > button")!;
+      const titleBounds = element.getBoundingClientRect();
+      const actionBounds = action.getBoundingClientRect();
+      const textRange = document.createRange();
+      textRange.selectNodeContents(element);
+      const lines = Array.from(textRange.getClientRects());
+
+      return {
+        textWraps: lines.length > 1,
+        textFitsTitle: lines.every((line) => line.left >= titleBounds.left - 1 && line.right <= titleBounds.right + 1),
+        textClearsDeleteButton: lines.every((line) =>
+          line.right <= actionBounds.left || line.left >= actionBounds.right ||
+          line.bottom <= actionBounds.top || line.top >= actionBounds.bottom
+        ),
+        cardFitsWithoutOverflow: surface.scrollWidth <= surface.clientWidth + 1
+      };
+    })).toEqual({
+      textWraps: true,
+      textFitsTitle: true,
+      textClearsDeleteButton: true,
+      cardFitsWithoutOverflow: true
+    });
+
+    await deleteButton.press("Enter");
+    await expect(page.getByRole("alertdialog")).toBeVisible();
+    await expect(page).toHaveURL("/");
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await card.click();
+    await expect(page).toHaveURL("/projects/BILL");
+  });
+}
 
 test("projects search opens an exact ticket id", async ({ page }) => {
   await mockAuthenticated(page, {

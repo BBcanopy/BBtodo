@@ -1,8 +1,10 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import Database from "better-sqlite3";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createDatabase } from "./bootstrap.js";
@@ -25,6 +27,39 @@ function createTempSqlitePath() {
 }
 
 describe("database migrations", () => {
+  it("adds archive state to migrated projects and persists archive changes across restarts", () => {
+    const sqlitePath = createTempSqlitePath();
+    const previousDatabase = new Database(sqlitePath);
+    const migrations = readMigrationFiles({ migrationsFolder: fileURLToPath(new URL("../../drizzle", import.meta.url)) });
+    previousDatabase.exec('CREATE TABLE __drizzle_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT NOT NULL, created_at NUMERIC)');
+    const archiveMigrationIndex = migrations.findIndex((entry) => entry.sql.some((sql) => sql.includes('ADD `archived`')));
+    expect(archiveMigrationIndex).toBeGreaterThan(0);
+    for (const migration of migrations.slice(0, archiveMigrationIndex)) {
+      migration.sql.forEach((sql) => previousDatabase.exec(sql));
+      previousDatabase.prepare('INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)').run(migration.hash, migration.folderMillis);
+    }
+    const now = "2026-10-31T12:00:00.000Z";
+    previousDatabase.prepare('INSERT INTO users (id, issuer, subject, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+      .run("owner", "https://issuer.example.com", "owner", now, now);
+    previousDatabase.prepare('INSERT INTO projects (id, user_id, name, ticket_prefix, next_ticket_number, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run("project", "owner", "Existing project", "EXIS", 1, now, now);
+    previousDatabase.close();
+
+    const upgraded = createDatabase(sqlitePath);
+    try {
+      expect(upgraded.database.prepare('SELECT archived, name, ticket_prefix FROM projects').get()).toEqual({ archived: 0, name: "Existing project", ticket_prefix: "EXIS" });
+      upgraded.database.prepare('UPDATE projects SET archived = 1').run();
+    } finally {
+      upgraded.database.close();
+    }
+    const reopened = createDatabase(sqlitePath);
+    try {
+      expect(reopened.database.prepare('SELECT archived FROM projects').get()).toEqual({ archived: 1 });
+    } finally {
+      reopened.database.close();
+    }
+  });
+
   it("upgrades a legacy database missing lane columns and backfills default lanes", () => {
     const sqlitePath = createTempSqlitePath();
     const legacyDatabase = new Database(sqlitePath);
@@ -127,7 +162,7 @@ describe("database migrations", () => {
         services.database.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>
       ).map((column) => column.name);
       expect(projectColumns).toEqual(
-        expect.arrayContaining(["ticket_prefix", "next_ticket_number"])
+        expect.arrayContaining(["ticket_prefix", "next_ticket_number", "archived"])
       );
 
       const sessionColumns = (
@@ -186,6 +221,8 @@ describe("database migrations", () => {
         next_ticket_number: 2,
         ticket_prefix: "LEGA"
       });
+      expect(services.database.prepare("SELECT archived FROM projects WHERE id = ?").get("project-1"))
+        .toEqual({ archived: 0 });
 
       const migratedTaskTags = services.database
         .prepare("SELECT color FROM task_tags WHERE task_id = ?")

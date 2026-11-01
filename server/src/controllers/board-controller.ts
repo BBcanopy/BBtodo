@@ -8,6 +8,7 @@ import {
   errorResponseSchema,
   laneParamsSchema,
   laneResponseSchema,
+  listProjectsQuerySchema,
   projectParamsSchema,
   projectTicketPrefixParamsSchema,
   projectResponseSchema,
@@ -40,7 +41,7 @@ import {
   listTaskTagsForUser,
   listTasksForProject,
   updateOwnedLane,
-  updateOwnedProjectName,
+  updateOwnedProject,
   updateOwnedTask,
   type DatabaseClient
 } from "../db.js";
@@ -102,9 +103,11 @@ export function registerBoardController(
     method: "GET",
     url: "/api/v1/projects",
     schema: {
+      querystring: listProjectsQuerySchema,
       security: apiDocsSecurity,
       response: {
         200: z.array(projectResponseSchema),
+        400: errorResponseSchema,
         401: errorResponseSchema
       },
       tags: ["projects"]
@@ -115,7 +118,7 @@ export function registerBoardController(
         return;
       }
 
-      return listProjectsForUser(database, user.id).map((project) =>
+      return listProjectsForUser(database, user.id, request.query).map((project) =>
         toProjectResponse(project, project.laneSummaries)
       );
     }
@@ -198,6 +201,7 @@ export function registerBoardController(
       security: apiDocsSecurity,
       response: {
         200: projectResponseSchema,
+        400: errorResponseSchema,
         401: errorResponseSchema,
         404: errorResponseSchema
       },
@@ -209,8 +213,8 @@ export function registerBoardController(
         return;
       }
 
-      const project = updateOwnedProjectName(database, {
-        name: request.body.name.trim(),
+      const project = updateOwnedProject(database, {
+        ...request.body,
         projectId: request.params.projectId,
         userId: user.id
       });
