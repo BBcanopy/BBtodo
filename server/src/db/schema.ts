@@ -55,6 +55,7 @@ export const projects = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    archived: integer("archived", { mode: "boolean" }).notNull().default(false),
     ticketPrefix: text("ticket_prefix"),
     nextTicketNumber: integer("next_ticket_number"),
     ...timestamps

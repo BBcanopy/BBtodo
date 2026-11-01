@@ -31,7 +31,7 @@ export {
   listTaskTagsForUser,
   listTasksForProject,
   updateOwnedLane,
-  updateOwnedProjectName,
+  updateOwnedProject,
   updateOwnedTask
 } from "./db/board.js";
 export {

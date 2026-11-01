@@ -197,6 +197,9 @@ function ensureLegacyCompatColumns(database: Database.Database) {
   }
 
   const projectColumns = getTableColumns(database, "projects");
+  if (!projectColumns.has("archived")) {
+    database.exec("ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;");
+  }
   if (!projectColumns.has("ticket_prefix")) {
     database.exec("ALTER TABLE projects ADD COLUMN ticket_prefix TEXT;");
   }

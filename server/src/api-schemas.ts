@@ -56,6 +56,7 @@ export const projectTicketPrefixSchema = z
 export const projectResponseSchema = z.object({
   id: z.string(),
   name: z.string(),
+  archived: z.boolean(),
   ticketPrefix: projectTicketPrefixSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -100,9 +101,18 @@ export const createProjectBodySchema = z.object({
   name: z.string().trim().min(1).max(120)
 });
 
-export const updateProjectBodySchema = z.object({
-  name: z.string().trim().min(1).max(120)
+export const listProjectsQuerySchema = z.object({
+  includeArchived: z.enum(["true", "false"]).default("false").transform((value) => value === "true")
 });
+
+export const updateProjectBodySchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    archived: z.boolean().optional()
+  })
+  .refine((input) => input.name !== undefined || input.archived !== undefined, {
+    message: "Provide a project name or archive status."
+  });
 
 export const createLaneBodySchema = z.object({
   name: z.string().trim().min(1).max(80)
@@ -215,6 +225,7 @@ export function toProjectResponse(
   return projectResponseSchema.parse({
     id: project.id,
     name: project.name,
+    archived: project.archived,
     ticketPrefix: project.ticketPrefix,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
