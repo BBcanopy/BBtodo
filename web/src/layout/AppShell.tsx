@@ -684,7 +684,7 @@ export function AppShell({ user }: { user: User }) {
                           role="alertdialog"
                         >
                           <p>Archive {activeProject.name}?</p>
-                          <p>It will be hidden from active project lists and TODOs. You can unarchive it later.</p>
+                          <p>It will be hidden. This action can be reverted</p>
                           <div className="task-delete-popover__actions">
                             <button autoFocus className="text-button" onClick={closeArchiveConfirmation} type="button">
                               Cancel

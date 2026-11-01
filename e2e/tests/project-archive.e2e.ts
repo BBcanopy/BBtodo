@@ -38,8 +38,7 @@ test("archiving reuses deletion confirmation styling and dismissing leaves the p
   const dialog = page.getByRole("alertdialog", { name: "Archive project Billing cleanup", exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("Archive Billing cleanup?");
-  await expect(dialog).toContainText("hidden from active project lists and TODOs");
-  await expect(dialog).toContainText("You can unarchive it later.");
+  await expect(dialog.getByText("It will be hidden. This action can be reverted", { exact: true })).toBeVisible();
   expect(await dialog.evaluate(readAppearance)).toEqual(deletionAppearance);
   await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
   expect(archiveUpdates).toBe(0);
