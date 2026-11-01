@@ -18,7 +18,7 @@ import {
   useSearchParams
 } from "react-router-dom";
 
-import { api, type TaskTag, type User } from "../api";
+import { api, type Project, type TaskTag, type User } from "../api";
 import { getTaskTagStyle } from "../app/tag-colors";
 import { themeOptions } from "../app/constants";
 import { useCreateProjectMutation } from "../hooks/useCreateProjectMutation";
@@ -30,7 +30,7 @@ import {
   parseExactTicketId,
   parseSingleTagInput
 } from "../app/utils";
-import { ChevronDownIcon, CloseIcon, ErrorBanner, PencilIcon, ToastNotice } from "../components/ui";
+import { ArchiveIcon, ChevronDownIcon, CloseIcon, ErrorBanner, PencilIcon, ToastNotice } from "../components/ui";
 import { useDismissableLayer } from "../hooks/useDismissableLayer";
 
 interface AppToast {
@@ -109,6 +109,22 @@ export function AppShell({ user }: { user: User }) {
       ]);
     }
   });
+  const archiveProjectMutation = useMutation({
+    mutationFn: (project: Project) => api.updateProject(project.id, { archived: !project.archived }),
+    onSuccess: async (project) => {
+      queryClient.setQueryData(["project", project.ticketPrefix], project);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"], refetchType: "all" }),
+        queryClient.invalidateQueries({ queryKey: ["todos"] })
+      ]);
+      setIsProjectSwitcherOpen(false);
+      setToast({
+        message: `${project.archived ? "Archived" : "Unarchived"} board ${project.name}.`,
+        title: project.archived ? "Board archived" : "Board unarchived",
+        tone: "success"
+      });
+    }
+  });
   const themeMutation = useMutation({
     mutationFn: api.updateTheme,
     onSuccess: (updatedUser) => {
@@ -176,7 +192,7 @@ export function AppShell({ user }: { user: User }) {
   }, [deferredProjectSwitcherInput, projectsQuery.data]);
   const hasProjectInput = projectSwitcherInput.trim().length > 0;
   const isProjectMutationPending =
-    createProjectMutation.isPending || renameProjectMutation.isPending;
+    createProjectMutation.isPending || renameProjectMutation.isPending || archiveProjectMutation.isPending;
 
   useDismissableLayer(isMenuOpen, menuRef, () => setIsMenuOpen(false));
   useDismissableLayer(isProjectSwitcherOpen, projectSwitcherRef, () => setIsProjectSwitcherOpen(false));
@@ -190,6 +206,7 @@ export function AppShell({ user }: { user: User }) {
     setProjectSwitcherInput("");
     createProjectMutation.reset();
     renameProjectMutation.reset();
+    archiveProjectMutation.reset();
   }, [isProjectSwitcherOpen]);
 
   useEffect(() => {
@@ -433,25 +450,38 @@ export function AppShell({ user }: { user: User }) {
                             <span>Create Project</span>
                           </button>
                           {activeProject ? (
-                            <button
-                              className="project-switcher__quick-action project-switcher__quick-action--secondary"
-                              disabled={!hasProjectInput || isProjectMutationPending}
-                              onClick={() => {
-                                renameProjectMutation.mutate({
-                                  name: projectSwitcherInput.trim(),
-                                  projectId: activeProject.id
-                                });
-                              }}
-                              type="button"
-                            >
-                              <PencilIcon />
-                              <span>Rename Project</span>
-                            </button>
+                            <>
+                              <button
+                                className="project-switcher__quick-action project-switcher__quick-action--secondary"
+                                disabled={!hasProjectInput || isProjectMutationPending}
+                                onClick={() => {
+                                  renameProjectMutation.mutate({
+                                    name: projectSwitcherInput.trim(),
+                                    projectId: activeProject.id
+                                  });
+                                }}
+                                type="button"
+                              >
+                                <PencilIcon />
+                                <span>Rename Project</span>
+                              </button>
+                              <button
+                                aria-label={`${activeProject.archived ? "Unarchive" : "Archive"} board ${activeProject.name}`}
+                                className="project-switcher__quick-action project-switcher__quick-action--secondary project-switcher__archive-action"
+                                disabled={isProjectMutationPending}
+                                onClick={() => archiveProjectMutation.mutate(activeProject)}
+                                type="button"
+                              >
+                                <ArchiveIcon restore={activeProject.archived} />
+                                <span>{activeProject.archived ? "Unarchive Project" : "Archive Project"}</span>
+                              </button>
+                            </>
                           ) : null}
                         </div>
                         {projectsQuery.error ? <ErrorBanner error={projectsQuery.error} /> : null}
                         {createProjectMutation.error ? <ErrorBanner error={createProjectMutation.error} /> : null}
                         {renameProjectMutation.error ? <ErrorBanner error={renameProjectMutation.error} /> : null}
+                        {archiveProjectMutation.error ? <ErrorBanner error={archiveProjectMutation.error} /> : null}
                         <div className="project-switcher__list">
                           {projectsQuery.isPending ? (
                             <p className="project-switcher__empty">Loading projects...</p>

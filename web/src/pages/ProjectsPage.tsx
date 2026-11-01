@@ -14,7 +14,6 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api, type Project } from "../api";
 import { itemStyle, parseExactTicketId } from "../app/utils";
 import {
-  ArchiveIcon,
   EmptyState,
   ErrorBanner,
   ProjectGridSkeleton,
@@ -105,14 +104,12 @@ function useProjectCardRowSpan(elementRef: RefObject<HTMLElement | null>, conten
 function ProjectCard({
   index,
   isPending,
-  onArchive,
   onDelete,
   onOpen,
   project
 }: {
   index: number;
   isPending: boolean;
-  onArchive: (project: Project) => void;
   onDelete: (projectId: string) => void;
   onOpen: (projectTicketPrefix: string) => void;
   project: Project;
@@ -151,19 +148,6 @@ function ProjectCard({
     >
       <div className="project-card__surface">
         <div className="project-card__meta">
-          <button
-            aria-label={`${project.archived ? "Unarchive" : "Archive"} board ${project.name}`}
-            className="icon-button"
-            disabled={isPending}
-            onClick={(event) => {
-              event.stopPropagation();
-              onArchive(project);
-            }}
-            title={project.archived ? "Unarchive board" : "Archive board"}
-            type="button"
-          >
-            <ArchiveIcon restore={project.archived} />
-          </button>
           <div className="project-card__delete-menu" ref={confirmRef}>
             <button
               aria-expanded={isConfirmOpen}
@@ -402,21 +386,6 @@ export function ProjectsPage() {
       ]);
     }
   });
-  const archiveProjectMutation = useMutation({
-    mutationFn: (project: Project) => api.updateProject(project.id, { archived: !project.archived }),
-    onSuccess: async (project) => {
-      queryClient.setQueryData(["project", project.ticketPrefix], project);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["projects"], refetchType: "all" }),
-        queryClient.invalidateQueries({ queryKey: ["todos"] })
-      ]);
-      setToast({
-        message: `${project.archived ? "Archived" : "Unarchived"} board ${project.name}.`,
-        title: project.archived ? "Board archived" : "Board unarchived",
-        tone: "success"
-      });
-    }
-  });
   const createProjectMutation = useCreateProjectMutation({
     onSuccess: async (project) => {
       setComposerDraftName("");
@@ -500,7 +469,6 @@ export function ProjectsPage() {
       ) : null}
       {projectsQuery.error ? <ErrorBanner error={projectsQuery.error} /> : null}
       {deleteProjectMutation.error ? <ErrorBanner error={deleteProjectMutation.error} /> : null}
-      {archiveProjectMutation.error ? <ErrorBanner error={archiveProjectMutation.error} /> : null}
 
       <div className="projects-toolbar">
         <label className="projects-archive-toggle">
@@ -560,8 +528,7 @@ export function ProjectsPage() {
             <ProjectCard
               key={project.id}
               index={index}
-              isPending={archiveProjectMutation.isPending || deleteProjectMutation.isPending}
-              onArchive={(project) => archiveProjectMutation.mutate(project)}
+              isPending={deleteProjectMutation.isPending}
               onDelete={(projectId) => deleteProjectMutation.mutate(projectId)}
               onOpen={(projectTicketPrefix) => navigate(`/projects/${projectTicketPrefix}`)}
               project={project}

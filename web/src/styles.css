@@ -941,6 +941,10 @@ h3 {
   background: var(--surface-muted);
 }
 
+.project-switcher__archive-action {
+  grid-column: 1 / -1;
+}
+
 .project-switcher__quick-mark {
   display: inline-grid;
   place-items: center;
@@ -1573,7 +1577,7 @@ textarea:focus {
 .project-card__surface {
   display: grid;
   gap: 1rem;
-  min-height: 16.25rem;
+  min-height: 15.75rem;
   padding: 1.2rem;
   background: var(--surface-strong);
   box-shadow:
@@ -1624,7 +1628,7 @@ textarea:focus {
   display: grid;
   gap: 0.5rem;
   min-width: 0;
-  padding-right: 4.5rem;
+  padding-right: 3.4rem;
 }
 
 .project-card__headline h2 {
@@ -1632,7 +1636,6 @@ textarea:focus {
 }
 
 .project-card__meta {
-  gap: 0.25rem;
   position: absolute;
   top: 1.2rem;
   right: 1.2rem;

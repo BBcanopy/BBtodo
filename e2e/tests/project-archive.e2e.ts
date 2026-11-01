@@ -9,8 +9,14 @@ test("project archiving hides the last active board and cached TODOs, then resto
   await expect(page.getByTestId("todo-project-group-project-1")).toBeVisible();
 
   await page.getByRole("link", { name: "Projects", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
+  await page.getByTestId("project-card-project-1").click();
+  await page.getByLabel("Open project switcher").click();
   await page.getByRole("button", { name: "Archive board Billing cleanup", exact: true }).click();
-  await expect(page).toHaveURL("/");
+  await expect(page).toHaveURL("/projects/BILL");
+  await expect(page.getByTestId("toast-notice")).toContainText("Board archived");
+  await expect(page.getByTestId("board-grid")).toBeVisible();
+  await page.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page.getByTestId("project-card-project-1")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "No active boards." })).toBeVisible();
   const showArchived = page.getByRole("checkbox", { name: "Show archived" });
@@ -26,11 +32,16 @@ test("project archiving hides the last active board and cached TODOs, then resto
   await showArchived.check();
   const card = page.getByTestId("project-card-project-1");
   await expect(card.getByText("Archived", { exact: true })).toBeVisible();
-  await card.getByRole("button", { name: "Unarchive board Billing cleanup", exact: true }).press("Enter");
-  await expect(page).toHaveURL("/?showArchived=true");
+  await expect(page.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
+  await card.click();
+  await page.getByLabel("Open project switcher").click();
+  await page.getByRole("button", { name: "Unarchive board Billing cleanup", exact: true }).press("Enter");
+  await expect(page).toHaveURL("/projects/BILL");
+  await expect(page.getByTestId("toast-notice")).toContainText("Board unarchived");
+  await page.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(card.getByText("Archived", { exact: true })).toHaveCount(0);
   await expect(card.getByLabel("Todo 2", { exact: true })).toBeVisible();
-  await showArchived.uncheck();
+  await expect(showArchived).not.toBeChecked();
   await expect(card).toBeVisible();
 
   await page.getByRole("link", { name: "TODOs", exact: true }).click();
@@ -70,8 +81,24 @@ test("show archived uses the URL, preserves search parameters, and survives relo
   await expect(page.getByRole("button", { name: "Open project Roadmap review", exact: true })).toBeVisible();
 });
 
+test("project archive actions appear only inside a specific board", async ({ page }) => {
+  const mixedProjects = projectsForGrid.map((project) => ({ ...project, archived: project.id === "project-1" }));
+  await mockAuthenticated(page, { projects: mixedProjects });
+  await page.goto("/?showArchived=true");
+  await expect(page.getByTestId("project-card-project-1").getByText("Archived", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
+  await page.getByLabel("Open project switcher").click();
+  await expect(page.getByRole("dialog", { name: "Project switcher" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
+  await page.getByRole("button", { name: "Open project Roadmap review", exact: true }).click();
+  await page.getByLabel("Open project switcher").click();
+  await expect(page.getByRole("button", { name: "Archive board Roadmap review", exact: true })).toBeEnabled();
+  await page.getByRole("link", { name: "Projects", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
+});
+
 for (const archived of [false, true]) {
-  test(`${archived ? "unarchive" : "archive"} controls support keyboard input, disable while pending, and preserve cards on failure`, async ({ page }) => {
+  test(`${archived ? "unarchive" : "archive"} board actions support keyboard input, disable while pending, and preserve state on failure`, async ({ page }) => {
     await mockAuthenticated(page, { projects: projects.map((project) => ({ ...project, archived })) });
     let releaseRequest!: () => void;
     const pendingRequest = new Promise<void>((resolve) => { releaseRequest = resolve; });
@@ -83,26 +110,30 @@ for (const archived of [false, true]) {
       await pendingRequest;
       await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "Archive update failed" }) });
     });
-    const path = archived ? "/?showArchived=true" : "/";
+    const path = "/projects/BILL";
     await page.goto(path);
-    const card = page.getByTestId("project-card-project-1");
-    const action = card.getByRole("button", { name: `${archived ? "Unarchive" : "Archive"} board Billing cleanup`, exact: true });
+    await page.getByLabel("Open project switcher").click();
+    const menu = page.getByRole("dialog", { name: "Project switcher" });
+    const action = menu.getByRole("button", { name: `${archived ? "Unarchive" : "Archive"} board Billing cleanup`, exact: true });
     await action.press("Space");
     await expect(action).toBeDisabled();
-    await expect(card.getByLabel("Delete board Billing cleanup")).toBeDisabled();
+    await expect(menu.getByRole("button", { name: "Rename Project", exact: true })).toBeDisabled();
     const iconBounds = await action.locator("svg").boundingBox();
     if (!iconBounds) {
       throw new Error("Expected the pending archive control to remain visible.");
     }
     await page.mouse.click(iconBounds.x + iconBounds.width / 2, iconBounds.y + iconBounds.height / 2);
-    await expect(card).toBeVisible();
+    await expect(page.getByTestId("board-grid")).toBeVisible();
     await expect(page).toHaveURL(path);
     releaseRequest();
     await expect(page.getByText("Archive update failed", { exact: true })).toBeVisible();
     await expect(action).toBeEnabled();
+    await expect(page).toHaveURL(path);
+    await page.getByRole("link", { name: "Projects", exact: true }).click();
+    await page.getByRole("checkbox", { name: "Show archived" }).check();
+    const card = page.getByTestId("project-card-project-1");
     await expect(card).toBeVisible();
     await expect(card.getByText("Archived", { exact: true })).toHaveCount(archived ? 1 : 0);
-    await expect(page).toHaveURL(path);
   });
 }
 
