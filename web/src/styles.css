@@ -1620,6 +1620,7 @@ textarea:focus {
   display: grid;
   grid-template-rows: auto 1fr;
   gap: 0.8rem;
+  min-width: 0;
   min-height: 100%;
   padding-top: 0.1rem;
 }
@@ -1632,7 +1633,9 @@ textarea:focus {
 }
 
 .project-card__headline h2 {
+  min-width: 0;
   max-width: 12ch;
+  overflow-wrap: anywhere;
 }
 
 .project-card__meta {
