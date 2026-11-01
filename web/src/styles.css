@@ -1514,6 +1514,29 @@ textarea:focus {
   align-items: center;
 }
 
+.projects-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.projects-archive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.projects-archive-toggle input {
+  width: 1rem;
+  height: 1rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 .project-grid {
   --project-card-column-width: 19rem;
   --project-card-gap: 1rem;
@@ -1550,7 +1573,7 @@ textarea:focus {
 .project-card__surface {
   display: grid;
   gap: 1rem;
-  min-height: 15.75rem;
+  min-height: 16.25rem;
   padding: 1.2rem;
   background: var(--surface-strong);
   box-shadow:
@@ -1601,7 +1624,7 @@ textarea:focus {
   display: grid;
   gap: 0.5rem;
   min-width: 0;
-  padding-right: 3.4rem;
+  padding-right: 4.5rem;
 }
 
 .project-card__headline h2 {
@@ -1609,6 +1632,7 @@ textarea:focus {
 }
 
 .project-card__meta {
+  gap: 0.25rem;
   position: absolute;
   top: 1.2rem;
   right: 1.2rem;

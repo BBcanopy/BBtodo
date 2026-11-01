@@ -8,14 +8,21 @@ import {
   useRef,
   useState
 } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { api, type Project } from "../api";
 import { itemStyle, parseExactTicketId } from "../app/utils";
-import { EmptyState, ErrorBanner, ProjectGridSkeleton, ToastNotice, TrashIcon } from "../components/ui";
+import {
+  ArchiveIcon,
+  EmptyState,
+  ErrorBanner,
+  ProjectGridSkeleton,
+  ToastNotice,
+  TrashIcon
+} from "../components/ui";
 import { useDismissableLayer } from "../hooks/useDismissableLayer";
-import { prependProjectToList, useCreateProjectMutation } from "../hooks/useCreateProjectMutation";
+import { useCreateProjectMutation } from "../hooks/useCreateProjectMutation";
 
 type PageToast = {
   message: string;
@@ -24,7 +31,7 @@ type PageToast = {
 };
 type DeleteProjectMutationContext = {
   deletedProject: Project | null;
-  previousProjects: Project[] | undefined;
+  previousProjects: [QueryKey, Project[] | undefined][];
 };
 
 const projectCardBaseRowSpan = 12;
@@ -97,11 +104,15 @@ function useProjectCardRowSpan(elementRef: RefObject<HTMLElement | null>, conten
 
 function ProjectCard({
   index,
+  isPending,
+  onArchive,
   onDelete,
   onOpen,
   project
 }: {
   index: number;
+  isPending: boolean;
+  onArchive: (project: Project) => void;
   onDelete: (projectId: string) => void;
   onOpen: (projectTicketPrefix: string) => void;
   project: Project;
@@ -110,7 +121,7 @@ function ProjectCard({
   const cardRef = useRef<HTMLElement | null>(null);
   const confirmRef = useRef<HTMLDivElement | null>(null);
   const laneSummaryKey = project.laneSummaries.map((lane) => `${lane.id}:${lane.taskCount}`).join("|");
-  const rowSpan = useProjectCardRowSpan(cardRef, `${project.name}|${laneSummaryKey}`);
+  const rowSpan = useProjectCardRowSpan(cardRef, `${project.name}|${project.archived}|${laneSummaryKey}`);
 
   useDismissableLayer(isConfirmOpen, confirmRef, () => setIsConfirmOpen(false));
 
@@ -125,6 +136,9 @@ function ProjectCard({
       data-testid={`project-card-${project.id}`}
       onClick={() => onOpen(project.ticketPrefix)}
       onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) {
+          return;
+        }
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onOpen(project.ticketPrefix);
@@ -137,11 +151,25 @@ function ProjectCard({
     >
       <div className="project-card__surface">
         <div className="project-card__meta">
+          <button
+            aria-label={`${project.archived ? "Unarchive" : "Archive"} board ${project.name}`}
+            className="icon-button"
+            disabled={isPending}
+            onClick={(event) => {
+              event.stopPropagation();
+              onArchive(project);
+            }}
+            title={project.archived ? "Unarchive board" : "Archive board"}
+            type="button"
+          >
+            <ArchiveIcon restore={project.archived} />
+          </button>
           <div className="project-card__delete-menu" ref={confirmRef}>
             <button
               aria-expanded={isConfirmOpen}
               aria-label={`Delete board ${project.name}`}
               className="icon-button danger-button"
+              disabled={isPending}
               onClick={(event) => {
                 event.stopPropagation();
                 setIsConfirmOpen((current) => !current);
@@ -166,6 +194,7 @@ function ProjectCard({
                   </button>
                   <button
                     className="ghost-button danger-button"
+                    disabled={isPending}
                     onClick={(event) => {
                       event.stopPropagation();
                       setIsConfirmOpen(false);
@@ -183,6 +212,7 @@ function ProjectCard({
         <div className="project-card__body">
           <div className="project-card__headline">
             <h2>{project.name}</h2>
+            {project.archived ? <span className="label-chip">Archived</span> : null}
           </div>
           <div aria-label={`Lane counts for ${project.name}`} className="project-card__lane-counts">
             {project.laneSummaries.map((lane) => (
@@ -306,9 +336,16 @@ export function ProjectsPage() {
   const [composerDraftName, setComposerDraftName] = useState("");
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const composerInputRef = useRef<HTMLInputElement | null>(null);
+  const showArchived = searchParams.get("showArchived") === "true";
+  // Keep the checkbox responsive while React Router commits the URL change.
+  const [isArchiveToggleChecked, setIsArchiveToggleChecked] = useState(showArchived);
+
+  useEffect(() => {
+    setIsArchiveToggleChecked(showArchived);
+  }, [showArchived]);
   const projectsQuery = useQuery({
-    queryKey: ["projects"],
-    queryFn: () => api.listProjects()
+    queryKey: showArchived ? ["projects", { includeArchived: true }] : ["projects"],
+    queryFn: () => api.listProjects(showArchived)
   });
   const projects = projectsQuery.data ?? [];
   const projectSearch = searchParams.get("q")?.trim() ?? "";
@@ -334,11 +371,13 @@ export function ProjectsPage() {
     mutationFn: (projectId: string) => api.deleteProject(projectId),
     onMutate: async (projectId) => {
       await queryClient.cancelQueries({ queryKey: ["projects"] });
-      const previousProjects = queryClient.getQueryData<Project[]>(["projects"]);
-      const deletedProject = previousProjects?.find((project) => project.id === projectId) ?? null;
+      const previousProjects = queryClient.getQueriesData<Project[]>({ queryKey: ["projects"] });
+      const deletedProject = previousProjects
+        .flatMap(([, projects]) => projects ?? [])
+        .find((project) => project.id === projectId) ?? null;
 
-      queryClient.setQueryData<Project[]>(["projects"], (currentProjects) =>
-        (currentProjects ?? []).filter((project) => project.id !== projectId)
+      queryClient.setQueriesData<Project[]>({ queryKey: ["projects"] }, (currentProjects) =>
+        currentProjects?.filter((project) => project.id !== projectId)
       );
 
       return {
@@ -347,7 +386,7 @@ export function ProjectsPage() {
       };
     },
     onError: (_error, _projectId, context) => {
-      queryClient.setQueryData(["projects"], context?.previousProjects);
+      context?.previousProjects.forEach(([key, projects]) => queryClient.setQueryData(key, projects));
     },
     onSuccess: async (_result, _projectId, context) => {
       setToast({
@@ -357,14 +396,29 @@ export function ProjectsPage() {
       });
     },
     onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        queryClient.invalidateQueries({ queryKey: ["todos"] })
+      ]);
+    }
+  });
+  const archiveProjectMutation = useMutation({
+    mutationFn: (project: Project) => api.updateProject(project.id, { archived: !project.archived }),
+    onSuccess: async (project) => {
+      queryClient.setQueryData(["project", project.ticketPrefix], project);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"], refetchType: "all" }),
+        queryClient.invalidateQueries({ queryKey: ["todos"] })
+      ]);
+      setToast({
+        message: `${project.archived ? "Archived" : "Unarchived"} board ${project.name}.`,
+        title: project.archived ? "Board archived" : "Board unarchived",
+        tone: "success"
+      });
     }
   });
   const createProjectMutation = useCreateProjectMutation({
-    onSuccess: async (project, context) => {
-      context.queryClient.setQueryData<Project[]>(["projects"], (currentProjects) =>
-        prependProjectToList(currentProjects, project)
-      );
+    onSuccess: async (project) => {
       setComposerDraftName("");
       setIsComposerOpen(false);
       setToast({
@@ -446,14 +500,40 @@ export function ProjectsPage() {
       ) : null}
       {projectsQuery.error ? <ErrorBanner error={projectsQuery.error} /> : null}
       {deleteProjectMutation.error ? <ErrorBanner error={deleteProjectMutation.error} /> : null}
+      {archiveProjectMutation.error ? <ErrorBanner error={archiveProjectMutation.error} /> : null}
+
+      <div className="projects-toolbar">
+        <label className="projects-archive-toggle">
+          <input
+            checked={isArchiveToggleChecked}
+            onChange={(event) => {
+              const checked = event.target.checked;
+              setIsArchiveToggleChecked(checked);
+              updateRouteParams((params) => {
+                if (checked) {
+                  params.set("showArchived", "true");
+                } else {
+                  params.delete("showArchived");
+                }
+              });
+            }}
+            type="checkbox"
+          />
+          Show archived
+        </label>
+      </div>
 
       {projectsQuery.isPending ? <ProjectGridSkeleton /> : null}
 
       {!projectsQuery.isPending && projects.length === 0 ? (
         <EmptyState
-          copy="Create the first project to open a board with Todo, In Progress, In review, and Done ready to go."
+          copy={
+            showArchived
+              ? "Create the first project to open a board with Todo, In Progress, In review, and Done ready to go."
+              : "Create a project or enable Show archived to find an archived board."
+          }
           eyebrow="Empty workspace"
-          title="No boards yet."
+          title={showArchived ? "No boards yet." : "No active boards."}
         />
       ) : null}
 
@@ -480,6 +560,8 @@ export function ProjectsPage() {
             <ProjectCard
               key={project.id}
               index={index}
+              isPending={archiveProjectMutation.isPending || deleteProjectMutation.isPending}
+              onArchive={(project) => archiveProjectMutation.mutate(project)}
               onDelete={(projectId) => deleteProjectMutation.mutate(projectId)}
               onOpen={(projectTicketPrefix) => navigate(`/projects/${projectTicketPrefix}`)}
               project={project}

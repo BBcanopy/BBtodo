@@ -23,6 +23,9 @@ export function useCreateProjectMutation(options: CreateProjectMutationOptions =
   return useMutation({
     mutationFn: (name: string) => api.createProject(name),
     onSuccess: async (project) => {
+      queryClient.setQueriesData<Project[]>({ queryKey: ["projects"] }, (currentProjects) =>
+        currentProjects ? prependProjectToList(currentProjects, project) : currentProjects
+      );
       try {
         await options.onSuccess?.(project, { queryClient });
       } finally {

@@ -64,6 +64,11 @@ export function AppShell({ user }: { user: User }) {
     queryFn: () => api.listProjects(),
     enabled: Boolean(boardMatch || isProjectsRoute)
   });
+  const currentProjectQuery = useQuery({
+    queryKey: ["project", boardMatch?.params.projectTicketPrefix],
+    queryFn: () => api.getProjectByTicketPrefix(boardMatch?.params.projectTicketPrefix ?? ""),
+    enabled: Boolean(boardMatch)
+  });
   const taskTagsQuery = useQuery({
     queryKey: ["task-tags"],
     queryFn: () => api.listTaskTags(),
@@ -94,10 +99,14 @@ export function AppShell({ user }: { user: User }) {
   const renameProjectMutation = useMutation({
     mutationFn: ({ name, projectId }: { name: string; projectId: string }) =>
       api.updateProject(projectId, { name }),
-    onSuccess: async () => {
+    onSuccess: async (project) => {
       setIsProjectSwitcherOpen(false);
       setProjectSwitcherInput("");
-      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.setQueryData(["project", project.ticketPrefix], project);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        queryClient.invalidateQueries({ queryKey: ["todos"] })
+      ]);
     }
   });
   const themeMutation = useMutation({
@@ -143,12 +152,12 @@ export function AppShell({ user }: { user: User }) {
       }),
     [activeTagFilterKey, availableTagFilters, selectedTagFilterChip, tagFilterQuery]
   );
-  const activeProject =
-    boardMatch && projectsQuery.data
+  const activeProject = currentProjectQuery.data ??
+    (boardMatch && projectsQuery.data
       ? projectsQuery.data.find(
           (project) => project.ticketPrefix === boardMatch.params.projectTicketPrefix
         ) ?? null
-      : null;
+      : null);
   const projectSwitcherLabel = activeProject?.name ?? "All projects";
   const totalTodoCount = useMemo(
     () => (todosQuery.data ?? []).reduce((count, group) => count + group.tasks.length, 0),

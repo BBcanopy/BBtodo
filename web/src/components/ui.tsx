@@ -49,6 +49,29 @@ export function CloseIcon({ className }: { className?: string }) {
   );
 }
 
+export function ArchiveIcon({ restore = false }: { restore?: boolean }) {
+  return (
+    <SvgIcon>
+      <path
+        d="M4 8h16V4H4v4Zm1 0v12h14V8M9 12h6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
+      />
+      {restore ? (
+        <path
+          d="m10 17 2-2 2 2m-2-2v4"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.7"
+        />
+      ) : null}
+    </SvgIcon>
+  );
+}
+
 export function ExpandIcon({ className }: { className?: string }) {
   return (
     <SvgIcon className={className}>

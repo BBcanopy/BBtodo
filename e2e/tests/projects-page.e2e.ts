@@ -313,7 +313,7 @@ test("project cards open on click and delete through a confirmation popover", as
   await expect(page.getByTestId("toast-notice")).toHaveCount(0);
   const deleteToast = page.getByTestId("toast-notice");
   await expect(projectCard).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "No boards yet." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No active boards." })).toBeVisible();
   await expect(deleteToast).toBeVisible();
   await expect(deleteToast).toContainText("Board deleted");
   await expect(deleteToast).toContainText("Deleted board Billing cleanup.");

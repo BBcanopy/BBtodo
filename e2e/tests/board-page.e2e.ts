@@ -1131,6 +1131,7 @@ test("board page move picker shows five boards by default and searches the rest"
     { id: "project-8", name: "Incident coordination", ticketPrefix: "IDCT" }
   ].entries()) {
     projectsWithManyBoards.push({
+      archived: false,
       createdAt: `2026-03-17T1${index}:00:00.000Z`,
       id: projectConfig.id,
       laneSummaries: [
