@@ -448,6 +448,9 @@ async function dragTaskWithTouch(page: Page, source: Locator, target: Locator, t
       await expect(target).toBeVisible();
 
       for (let step = 1; step <= mobileTouchDragMoveSteps; step += 1) {
+        // A visible lane slot can still sit behind the fixed mobile trash dock.
+        // Center the destination before measuring the touch point for this move.
+        await target.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" }));
         const dragTargetPoint = await getLocatorTouchPoint(target, targetYRatio);
         currentPoint =
           step === mobileTouchDragMoveSteps
@@ -462,6 +465,7 @@ async function dragTaskWithTouch(page: Page, source: Locator, target: Locator, t
         );
       }
 
+      await expect(target).toHaveClass(/is-active/);
       await endTouchGesture(client);
       touchStarted = false;
       return;
