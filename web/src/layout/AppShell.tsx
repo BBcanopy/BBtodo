@@ -117,11 +117,17 @@ export function AppShell({ user }: { user: User }) {
         queryClient.invalidateQueries({ queryKey: ["projects"], refetchType: "all" }),
         queryClient.invalidateQueries({ queryKey: ["todos"] })
       ]);
-      setIsProjectSwitcherOpen(false);
       setToast({
         message: `${project.archived ? "Archived" : "Unarchived"} board ${project.name}.`,
         title: project.archived ? "Board archived" : "Board unarchived",
         tone: "success"
+      });
+    },
+    onError: (error) => {
+      setToast({
+        message: error.message,
+        title: "Could not update archive status",
+        tone: "danger"
       });
     }
   });
@@ -206,7 +212,6 @@ export function AppShell({ user }: { user: User }) {
     setProjectSwitcherInput("");
     createProjectMutation.reset();
     renameProjectMutation.reset();
-    archiveProjectMutation.reset();
   }, [isProjectSwitcherOpen]);
 
   useEffect(() => {
@@ -406,7 +411,10 @@ export function AppShell({ user }: { user: User }) {
                   Projects
                 </NavLink>
                 {activeProject || isProjectsRoute ? (
-                  <div className="project-switcher" ref={projectSwitcherRef}>
+                  <div
+                    className={`project-switcher${activeProject ? " project-switcher--board" : ""}`}
+                    ref={projectSwitcherRef}
+                  >
                     <button
                       aria-expanded={isProjectSwitcherOpen}
                       aria-haspopup="dialog"
@@ -423,6 +431,18 @@ export function AppShell({ user }: { user: User }) {
                         className={`project-switcher__chevron${isProjectSwitcherOpen ? " is-open" : ""}`}
                       />
                     </button>
+                    {activeProject ? (
+                      <button
+                        aria-label={`${activeProject.archived ? "Unarchive" : "Archive"} board ${activeProject.name}`}
+                        className="subnav__action subnav__archive-action"
+                        disabled={isProjectMutationPending}
+                        onClick={() => archiveProjectMutation.mutate(activeProject)}
+                        type="button"
+                      >
+                        <ArchiveIcon restore={activeProject.archived} />
+                        <span>{activeProject.archived ? "Unarchive Project" : "Archive Project"}</span>
+                      </button>
+                    ) : null}
                     {isProjectSwitcherOpen ? (
                       <div
                         aria-label="Project switcher"
@@ -450,38 +470,25 @@ export function AppShell({ user }: { user: User }) {
                             <span>Create Project</span>
                           </button>
                           {activeProject ? (
-                            <>
-                              <button
-                                className="project-switcher__quick-action project-switcher__quick-action--secondary"
-                                disabled={!hasProjectInput || isProjectMutationPending}
-                                onClick={() => {
-                                  renameProjectMutation.mutate({
-                                    name: projectSwitcherInput.trim(),
-                                    projectId: activeProject.id
-                                  });
-                                }}
-                                type="button"
-                              >
-                                <PencilIcon />
-                                <span>Rename Project</span>
-                              </button>
-                              <button
-                                aria-label={`${activeProject.archived ? "Unarchive" : "Archive"} board ${activeProject.name}`}
-                                className="project-switcher__quick-action project-switcher__quick-action--secondary project-switcher__archive-action"
-                                disabled={isProjectMutationPending}
-                                onClick={() => archiveProjectMutation.mutate(activeProject)}
-                                type="button"
-                              >
-                                <ArchiveIcon restore={activeProject.archived} />
-                                <span>{activeProject.archived ? "Unarchive Project" : "Archive Project"}</span>
-                              </button>
-                            </>
+                            <button
+                              className="project-switcher__quick-action project-switcher__quick-action--secondary"
+                              disabled={!hasProjectInput || isProjectMutationPending}
+                              onClick={() => {
+                                renameProjectMutation.mutate({
+                                  name: projectSwitcherInput.trim(),
+                                  projectId: activeProject.id
+                                });
+                              }}
+                              type="button"
+                            >
+                              <PencilIcon />
+                              <span>Rename Project</span>
+                            </button>
                           ) : null}
                         </div>
                         {projectsQuery.error ? <ErrorBanner error={projectsQuery.error} /> : null}
                         {createProjectMutation.error ? <ErrorBanner error={createProjectMutation.error} /> : null}
                         {renameProjectMutation.error ? <ErrorBanner error={renameProjectMutation.error} /> : null}
-                        {archiveProjectMutation.error ? <ErrorBanner error={archiveProjectMutation.error} /> : null}
                         <div className="project-switcher__list">
                           {projectsQuery.isPending ? (
                             <p className="project-switcher__empty">Loading projects...</p>
