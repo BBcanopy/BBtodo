@@ -49,6 +49,7 @@ export function AppShell({ user }: { user: User }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProjectSwitcherOpen, setIsProjectSwitcherOpen] = useState(false);
   const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
+  const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
   const [projectSwitcherInput, setProjectSwitcherInput] = useState("");
   const [toast, setToast] = useState<AppToast | null>(null);
   const [gravatarUrl, setGravatarUrl] = useState<string | null>(null);
@@ -58,6 +59,8 @@ export function AppShell({ user }: { user: User }) {
   const projectSwitcherRef = useRef<HTMLDivElement | null>(null);
   const tagFilterRef = useRef<HTMLDivElement | null>(null);
   const tagFilterInputRef = useRef<HTMLInputElement | null>(null);
+  const archiveControlRef = useRef<HTMLDivElement | null>(null);
+  const archiveButtonRef = useRef<HTMLButtonElement | null>(null);
   const navSearchLookupRequestRef = useRef(0);
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -203,6 +206,16 @@ export function AppShell({ user }: { user: User }) {
   useDismissableLayer(isMenuOpen, menuRef, () => setIsMenuOpen(false));
   useDismissableLayer(isProjectSwitcherOpen, projectSwitcherRef, () => setIsProjectSwitcherOpen(false));
   useDismissableLayer(isTagFilterOpen, tagFilterRef, () => setIsTagFilterOpen(false));
+  useDismissableLayer(isArchiveConfirmOpen, archiveControlRef, closeArchiveConfirmation);
+
+  function closeArchiveConfirmation() {
+    setIsArchiveConfirmOpen(false);
+    archiveButtonRef.current?.focus();
+  }
+
+  useEffect(() => {
+    setIsArchiveConfirmOpen(false);
+  }, [boardMatch?.params.projectTicketPrefix]);
 
   useEffect(() => {
     if (isProjectSwitcherOpen) {
@@ -503,9 +516,7 @@ export function AppShell({ user }: { user: User }) {
                 ) : null}
               </div>
               {showNavSearch ? (
-                <div
-                  className={`subnav__cluster subnav__cluster--tools${boardMatch ? " subnav__cluster--board-tools" : ""}`}
-                >
+                <div className="subnav__cluster subnav__cluster--tools">
                   <label className="subnav__search">
                     <input
                       aria-label={navSearchLabel}
@@ -640,30 +651,59 @@ export function AppShell({ user }: { user: User }) {
                     </div>
                   ) : null}
                   {activeProject ? (
-                    <button
-                      aria-label={`${activeProject.archived ? "Unarchive" : "Archive"} board ${activeProject.name}`}
-                      className="subnav__archive-action"
-                      disabled={isProjectMutationPending}
-                      onClick={() => {
-                        if (
-                          !activeProject.archived &&
-                          !window.confirm(
-                            `Archive project "${activeProject.name}"?\n\nIt will be hidden from active project lists and TODOs. You can unarchive it later.`
-                          )
-                        ) {
-                          return;
+                    <div className="subnav__archive-control" ref={archiveControlRef}>
+                      <button
+                        aria-controls={isArchiveConfirmOpen ? "archive-project-confirmation" : undefined}
+                        aria-expanded={activeProject.archived ? undefined : isArchiveConfirmOpen}
+                        aria-haspopup={activeProject.archived ? undefined : "dialog"}
+                        aria-label={`${activeProject.archived ? "Unarchive" : "Archive"} board ${activeProject.name}`}
+                        className="subnav__archive-action"
+                        disabled={isProjectMutationPending}
+                        onClick={() => {
+                          if (activeProject.archived) {
+                            archiveProjectMutation.mutate(activeProject);
+                          } else {
+                            setIsArchiveConfirmOpen((current) => !current);
+                          }
+                        }}
+                        ref={archiveButtonRef}
+                        title={
+                          activeProject.archived
+                            ? "Unarchive project: show it in active project lists and TODOs."
+                            : "Archive project: hide it from active project lists and TODOs."
                         }
-                        archiveProjectMutation.mutate(activeProject);
-                      }}
-                      title={
-                        activeProject.archived
-                          ? "Unarchive project: show it in active project lists and TODOs."
-                          : "Archive project: hide it from active project lists and TODOs."
-                      }
-                      type="button"
-                    >
-                      <ArchiveIcon restore={activeProject.archived} />
-                    </button>
+                        type="button"
+                      >
+                        <ArchiveIcon restore={activeProject.archived} />
+                      </button>
+                      {isArchiveConfirmOpen && !activeProject.archived ? (
+                        <div
+                          aria-label={`Archive project ${activeProject.name}`}
+                          className="task-delete-popover subnav__archive-confirmation"
+                          id="archive-project-confirmation"
+                          role="alertdialog"
+                        >
+                          <p>Archive {activeProject.name}?</p>
+                          <p>It will be hidden from active project lists and TODOs. You can unarchive it later.</p>
+                          <div className="task-delete-popover__actions">
+                            <button autoFocus className="text-button" onClick={closeArchiveConfirmation} type="button">
+                              Cancel
+                            </button>
+                            <button
+                              className="ghost-button danger-button"
+                              disabled={isProjectMutationPending}
+                              onClick={() => {
+                                closeArchiveConfirmation();
+                                archiveProjectMutation.mutate(activeProject);
+                              }}
+                              type="button"
+                            >
+                              Archive
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
               ) : null}

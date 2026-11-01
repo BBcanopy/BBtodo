@@ -3,33 +3,57 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockAuthenticated, projects, projectsForGrid } from "./fixtures";
 
 async function acceptArchiveConfirmation(page: Page, trigger: () => Promise<void>) {
-  const confirmation = page.waitForEvent("dialog");
-  const triggered = trigger();
-  await (await confirmation).accept();
-  await triggered;
+  await trigger();
+  const confirmation = page.getByRole("alertdialog", { name: /^Archive project / });
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation).toBeInViewport({ ratio: 1 });
+  await confirmation.getByRole("button", { name: "Archive", exact: true }).click();
 }
 
-test("archiving requires confirmation and cancelling leaves the project unchanged", async ({ page }) => {
+test("archiving reuses deletion confirmation styling and dismissing leaves the project unchanged", async ({ page }) => {
   await mockAuthenticated(page);
   let archiveUpdates = 0;
+  let browserDialogs = 0;
+  page.on("dialog", async (dialog) => {
+    browserDialogs += 1;
+    await dialog.dismiss();
+  });
   page.on("request", (request) => {
     if (request.method() === "PATCH" && request.url().endsWith("/api/v1/projects/project-1") && request.postDataJSON().archived) {
       archiveUpdates += 1;
     }
   });
-  await page.goto("/projects/BILL");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Delete board Billing cleanup", exact: true }).click();
+  const readAppearance = (element: Element) => {
+    const styles = getComputedStyle(element);
+    return { background: styles.backgroundColor, border: styles.border, radius: styles.borderRadius, shadow: styles.boxShadow };
+  };
+  const deletionAppearance = await page.getByRole("alertdialog").evaluate(readAppearance);
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByTestId("project-card-project-1").click();
   const action = page.getByRole("button", { name: "Archive board Billing cleanup", exact: true });
 
-  const confirmation = page.waitForEvent("dialog");
-  const clicked = action.click();
-  const dialog = await confirmation;
-  expect(dialog.type()).toBe("confirm");
-  expect(dialog.message()).toContain('Archive project "Billing cleanup"?');
-  expect(dialog.message()).toContain("hidden from active project lists and TODOs");
-  expect(dialog.message()).toContain("You can unarchive it later.");
+  await action.click();
+  const dialog = page.getByRole("alertdialog", { name: "Archive project Billing cleanup", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Archive Billing cleanup?");
+  await expect(dialog).toContainText("hidden from active project lists and TODOs");
+  await expect(dialog).toContainText("You can unarchive it later.");
+  expect(await dialog.evaluate(readAppearance)).toEqual(deletionAppearance);
+  await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
   expect(archiveUpdates).toBe(0);
-  await dialog.dismiss();
-  await clicked;
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(action).toBeFocused();
+  await action.press("Space");
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(action).toBeFocused();
+  await action.click();
+  await page.getByLabel("Search cards").click();
+  await expect(dialog).toHaveCount(0);
   await expect(action).toBeEnabled();
   await expect(page.getByRole("button", { name: "Unarchive board Billing cleanup", exact: true })).toHaveCount(0);
   expect(archiveUpdates).toBe(0);
@@ -37,6 +61,7 @@ test("archiving requires confirmation and cancelling leaves the project unchange
   await acceptArchiveConfirmation(page, () => action.click());
   await expect(page.getByRole("button", { name: "Unarchive board Billing cleanup", exact: true })).toBeEnabled();
   expect(archiveUpdates).toBe(1);
+  expect(browserDialogs).toBe(0);
 });
 
 test("project archiving hides the last active board and cached TODOs, then restores both", async ({ page }) => {
@@ -154,8 +179,13 @@ for (const viewport of [
       ]);
       expect(tagBounds).not.toBeNull();
       expect(actionBounds).not.toBeNull();
-      expect(actionBounds!.x).toBeGreaterThanOrEqual(tagBounds!.x + tagBounds!.width + 8);
-      expect(Math.abs(actionBounds!.y + actionBounds!.height / 2 - tagBounds!.y - tagBounds!.height / 2)).toBeLessThan(2);
+      if (viewport.name === "desktop") {
+        expect(actionBounds!.x).toBeGreaterThanOrEqual(tagBounds!.x + tagBounds!.width + 8);
+        expect(Math.abs(actionBounds!.y + actionBounds!.height / 2 - tagBounds!.y - tagBounds!.height / 2)).toBeLessThan(2);
+      } else {
+        expect(actionBounds!.y).toBeGreaterThanOrEqual(tagBounds!.y + tagBounds!.height + 8);
+        expect(actionBounds!.x + actionBounds!.width).toBeCloseTo(tagBounds!.x + tagBounds!.width, 0);
+      }
       expect(actionBounds!.x + actionBounds!.width).toBeLessThanOrEqual(viewport.width);
       await page.getByLabel("Open project switcher").click();
       const menu = page.getByRole("dialog", { name: "Project switcher" });
@@ -169,6 +199,29 @@ for (const viewport of [
 
     await page.getByRole("link", { name: "Projects", exact: true }).click();
     await expect(page.getByRole("button", { name: /^(Archive|Unarchive) board / })).toHaveCount(0);
+  });
+}
+
+for (const viewport of [
+  { name: "wide desktop", width: 1920, height: 1080 },
+  { name: "mobile", width: 390, height: 844 }
+]) {
+  test(`archive controls preserve the original search and tag widths on ${viewport.name}`, async ({ page }) => {
+    await mockAuthenticated(page);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto("/projects/BILL");
+    await expect(page.getByRole("button", { name: "Archive board Billing cleanup", exact: true })).toBeVisible();
+    const boardSearch = await page.getByLabel("Search cards").boundingBox();
+    const boardTags = await page.locator(".subnav__search--tag-filter").boundingBox();
+    await page.getByRole("link", { name: "TODOs", exact: true }).click();
+    const todoSearch = await page.getByLabel("Search todos").boundingBox();
+    const todoTags = await page.locator(".subnav__search--tag-filter").boundingBox();
+    expect(boardSearch).not.toBeNull();
+    expect(boardTags).not.toBeNull();
+    expect(todoSearch).not.toBeNull();
+    expect(todoTags).not.toBeNull();
+    expect(boardSearch!.width).toBeCloseTo(todoSearch!.width, 0);
+    expect(boardTags!.width).toBeCloseTo(todoTags!.width, 0);
   });
 }
 

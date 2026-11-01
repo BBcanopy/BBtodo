@@ -593,6 +593,12 @@ h3 {
   transform: translateY(1px) scale(0.98);
 }
 
+.subnav__archive-control {
+  position: relative;
+  flex: 0 0 auto;
+  z-index: 10;
+}
+
 .subnav__archive-action {
   display: inline-grid;
   place-items: center;
@@ -610,9 +616,10 @@ h3 {
   opacity: 0.55;
 }
 
-.subnav__cluster--board-tools .subnav__search--tag-filter {
-  flex: 1 1 10rem;
+.task-delete-popover.subnav__archive-confirmation {
+  width: min(20rem, calc(100vw - 2rem));
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .subnav__search {
@@ -3833,9 +3840,19 @@ textarea:focus {
   }
 
   .subnav__cluster--tools {
+    position: relative;
     flex-basis: 100%;
     justify-content: flex-start;
     margin-left: 0;
+  }
+
+  .subnav__archive-control {
+    position: static;
+    margin-left: auto;
+  }
+
+  .task-delete-popover.subnav__archive-confirmation {
+    width: 100%;
   }
 
   .subnav__current {
