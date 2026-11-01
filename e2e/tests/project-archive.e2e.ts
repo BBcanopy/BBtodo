@@ -84,7 +84,7 @@ for (const viewport of [
   { name: "desktop", width: 1440, height: 900 },
   { name: "mobile", width: 390, height: 844 }
 ]) {
-  test(`archive actions sit beside the selector outside its dropdown on ${viewport.name}`, async ({ page }) => {
+  test(`archive actions use plain labels after the tag filter on ${viewport.name}`, async ({ page }) => {
     const mixedProjects = projectsForGrid.map((project) => ({ ...project, archived: project.id === "project-1" }));
     await mockAuthenticated(page, { projects: mixedProjects });
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -99,15 +99,19 @@ for (const viewport of [
     for (const verb of ["Archive", "Unarchive"]) {
       const action = page.getByRole("button", { name: `${verb} board Roadmap review`, exact: true });
       await expect(action).toBeEnabled();
+      await expect(action).toHaveText(verb === "Archive" ? "Acrhive" : "Unarchive");
+      await expect(action).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      await expect(action).toHaveCSS("box-shadow", "none");
+      await expect(action).toHaveCSS("border-top-width", "0px");
       await expect(page.getByRole("dialog", { name: "Project switcher" })).toHaveCount(0);
-      const [selectorBounds, actionBounds] = await Promise.all([
-        page.getByLabel("Open project switcher").boundingBox(),
+      const [tagBounds, actionBounds] = await Promise.all([
+        page.locator(".subnav__search--tag-filter").boundingBox(),
         action.boundingBox()
       ]);
-      expect(selectorBounds).not.toBeNull();
+      expect(tagBounds).not.toBeNull();
       expect(actionBounds).not.toBeNull();
-      expect(actionBounds!.x).toBeGreaterThanOrEqual(selectorBounds!.x + selectorBounds!.width + 8);
-      expect(Math.abs(actionBounds!.y + actionBounds!.height / 2 - selectorBounds!.y - selectorBounds!.height / 2)).toBeLessThan(2);
+      expect(actionBounds!.x).toBeGreaterThanOrEqual(tagBounds!.x + tagBounds!.width + 8);
+      expect(Math.abs(actionBounds!.y + actionBounds!.height / 2 - tagBounds!.y - tagBounds!.height / 2)).toBeLessThan(2);
       expect(actionBounds!.x + actionBounds!.width).toBeLessThanOrEqual(viewport.width);
       await page.getByLabel("Open project switcher").click();
       const menu = page.getByRole("dialog", { name: "Project switcher" });

@@ -411,10 +411,7 @@ export function AppShell({ user }: { user: User }) {
                   Projects
                 </NavLink>
                 {activeProject || isProjectsRoute ? (
-                  <div
-                    className={`project-switcher${activeProject ? " project-switcher--board" : ""}`}
-                    ref={projectSwitcherRef}
-                  >
+                  <div className="project-switcher" ref={projectSwitcherRef}>
                     <button
                       aria-expanded={isProjectSwitcherOpen}
                       aria-haspopup="dialog"
@@ -431,18 +428,6 @@ export function AppShell({ user }: { user: User }) {
                         className={`project-switcher__chevron${isProjectSwitcherOpen ? " is-open" : ""}`}
                       />
                     </button>
-                    {activeProject ? (
-                      <button
-                        aria-label={`${activeProject.archived ? "Unarchive" : "Archive"} board ${activeProject.name}`}
-                        className="subnav__action subnav__archive-action"
-                        disabled={isProjectMutationPending}
-                        onClick={() => archiveProjectMutation.mutate(activeProject)}
-                        type="button"
-                      >
-                        <ArchiveIcon restore={activeProject.archived} />
-                        <span>{activeProject.archived ? "Unarchive Project" : "Archive Project"}</span>
-                      </button>
-                    ) : null}
                     {isProjectSwitcherOpen ? (
                       <div
                         aria-label="Project switcher"
@@ -518,7 +503,9 @@ export function AppShell({ user }: { user: User }) {
                 ) : null}
               </div>
               {showNavSearch ? (
-                <div className="subnav__cluster subnav__cluster--tools">
+                <div
+                  className={`subnav__cluster subnav__cluster--tools${boardMatch ? " subnav__cluster--board-tools" : ""}`}
+                >
                   <label className="subnav__search">
                     <input
                       aria-label={navSearchLabel}
@@ -651,6 +638,18 @@ export function AppShell({ user }: { user: User }) {
                         </div>
                       ) : null}
                     </div>
+                  ) : null}
+                  {activeProject ? (
+                    <button
+                      aria-label={`${activeProject.archived ? "Unarchive" : "Archive"} board ${activeProject.name}`}
+                      className="subnav__archive-action"
+                      disabled={isProjectMutationPending}
+                      onClick={() => archiveProjectMutation.mutate(activeProject)}
+                      type="button"
+                    >
+                      <ArchiveIcon restore={activeProject.archived} />
+                      <span>{activeProject.archived ? "Unarchive" : "Acrhive"}</span>
+                    </button>
                   ) : null}
                 </div>
               ) : null}
