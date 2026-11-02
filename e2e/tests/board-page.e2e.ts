@@ -2513,6 +2513,8 @@ test.describe("mobile board page", () => {
   });
 
   test("board page deletes a scrolled mobile task with the floating trash dock", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
     const projectsWithTallTodo = structuredClone(projectsForGrid);
     const tasksWithTallTodo = structuredClone(tasks);
     const billingCleanupProject = projectsWithTallTodo.find((project) => project.id === "project-1");
@@ -2575,6 +2577,7 @@ test.describe("mobile board page", () => {
     await expect(taskDeleteToast).toContainText("Mobile tall backlog 12 (BILL-21) was deleted.");
     await expect(sourceCard).toHaveCount(0, { timeout: 15000 });
     await expect(mobileTrashTarget).toHaveCount(0);
+    expect(pageErrors).toEqual([]);
   });
 
   test("board page lets the mobile header scroll out of view instead of covering content", async ({ page }) => {

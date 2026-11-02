@@ -2355,6 +2355,7 @@ export function BoardPage() {
   const pointerClientYRef = useRef<number | null>(null);
   const taskDragPreviewRef = useRef<TaskDragPreview | null>(null);
   const taskDragPreviewUpdatedAtRef = useRef<string | null>(null);
+  const taskDragOverDeltaRef = useRef<DragOverEvent["delta"] | null>(null);
 
   const isValidProjectTicketPrefix =
     typeof projectTicketPrefix === "string" && projectTicketPrefixPattern.test(projectTicketPrefix);
@@ -2961,6 +2962,7 @@ export function BoardPage() {
     setTaskDragPreviewState(null);
     setTaskDragPreviewWidth(null);
     taskDragPreviewUpdatedAtRef.current = null;
+    taskDragOverDeltaRef.current = null;
   }
 
   function handleLaneDragStart(event: DragEvent<HTMLElement>, laneId: string) {
@@ -3062,6 +3064,7 @@ export function BoardPage() {
     }
 
     const activeTaskId = String(event.active.id);
+    taskDragOverDeltaRef.current = null;
 
     flushSync(() => {
       setPendingDeleteTaskId(null);
@@ -3077,6 +3080,14 @@ export function BoardPage() {
     if (!draggedTaskId || isTaskDragDisabled) {
       return;
     }
+
+    const previousDelta = taskDragOverDeltaRef.current;
+    if (previousDelta?.x === event.delta.x && previousDelta.y === event.delta.y) {
+      return;
+    }
+    // Preview layout changes can switch collision targets without another move.
+    // Wait for pointer movement or scrolling before changing the preview again.
+    taskDragOverDeltaRef.current = { ...event.delta };
 
     if (!event.over) {
       setTaskDragPreviewState(null);
