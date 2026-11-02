@@ -727,6 +727,32 @@ test("board page autosaves cards and filters tasks", async ({ page }) => {
   await expect(page.getByText("Review retry scope")).toHaveCount(0);
 });
 
+test("board page saves and reloads card bodies longer than 40,000 characters", async ({ page }) => {
+  await mockAuthenticated(page, { projects: projectsForGrid, tasks });
+  await page.goto(`${billingBoardPath}/BILL-1`);
+
+  const editDialog = page.getByRole("dialog", { name: "Edit BILL-1" });
+  const bodyField = editDialog.getByLabel("Task body");
+  const longBody = `# Long card\n\n${"Card details.\n".repeat(4000)}\n**End of long card**`;
+  const autosaveResponse = page.waitForResponse((response) =>
+    response.request().method() === "PATCH" &&
+    response.url().endsWith("/api/v1/projects/project-1/tasks/task-1")
+  );
+
+  await bodyField.fill(longBody);
+  await expect(bodyField).toHaveValue(longBody);
+  const response = await autosaveResponse;
+  expect(response.ok()).toBe(true);
+  expect(response.request().postDataJSON().body).toBe(longBody);
+  expect((await response.json()).body).toBe(longBody);
+
+  await editDialog.getByRole("tab", { name: "Rendered preview" }).click();
+  await expect(editDialog.locator(".markdown-preview strong")).toHaveText("End of long card");
+
+  await page.reload();
+  await expect(bodyField).toHaveValue(longBody);
+});
+
 test("board page keeps save appearance steady and disables saves during autosave", async ({ page }) => {
   await mockAuthenticated(page, { projects: projectsForGrid, tasks });
   let releaseSave!: () => void;
