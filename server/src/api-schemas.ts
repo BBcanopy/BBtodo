@@ -149,7 +149,7 @@ export const apiTokenParamsSchema = z.object({
 
 export const createTaskBodySchema = z.object({
   title: z.string().trim().min(1).max(240),
-  body: z.string().max(40_000).optional(),
+  body: z.string().optional(),
   laneId: z.string().uuid().optional(),
   parentTaskId: z.string().uuid().optional(),
   tags: taskTagsInputSchema.optional()
@@ -167,7 +167,7 @@ export const ticketIdParamsSchema = z.object({
 export const updateTaskBodySchema = z
   .object({
     title: z.string().trim().min(1).max(240).optional(),
-    body: z.string().max(40_000).optional(),
+    body: z.string().optional(),
     laneId: z.string().uuid().optional(),
     destinationProjectId: z.string().uuid().optional(),
     parentTaskId: z.string().uuid().nullable().optional(),

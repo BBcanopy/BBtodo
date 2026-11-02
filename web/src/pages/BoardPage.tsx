@@ -2094,7 +2094,6 @@ function TaskEditorDialog({
                 >
                   <textarea
                     aria-label="Task body"
-                    maxLength={12000}
                     onChange={(event) => {
                       setMoveError(null);
                       setSaveError(null);

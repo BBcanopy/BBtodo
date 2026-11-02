@@ -24,6 +24,59 @@ afterEach(async () => {
 });
 
 describe("projects and tasks API", () => {
+  it("creates and updates task bodies longer than 40,000 characters without truncation", async () => {
+    const oidc = createMutableMockOidcProvider({
+      subject: "user-1",
+      email: "one@example.com",
+      displayName: "User One"
+    });
+    const app = buildApp({ config: testConfig, oidcProvider: oidc.provider, sqlitePath: ":memory:" });
+    createdApps.push(app);
+    const session = await loginWithOidc(app);
+    const cookies = { bbtodo_session: session.sessionCookie };
+    const projectResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/projects",
+      cookies,
+      payload: { name: "Long card content" }
+    });
+    expect(projectResponse.statusCode).toBe(201);
+    const project = projectResponse.json();
+    const tasksUrl = `/api/v1/projects/${project.id}/tasks`;
+    const initialBody = `# Long card\n\n${"a".repeat(40_001)}\nEnd of initial body.`;
+    const createResponse = await app.inject({
+      method: "POST",
+      url: tasksUrl,
+      cookies,
+      payload: { title: "Keep all card details", body: initialBody }
+    });
+    expect(createResponse.statusCode).toBe(201);
+    const task = createResponse.json();
+    expect(task.body).toBe(initialBody);
+
+    const listResponse = await app.inject({ method: "GET", url: tasksUrl, cookies });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toEqual([task]);
+
+    const updatedBody = `${initialBody}\n\n${"More details.\n".repeat(4000)}\n**End of updated body**`;
+    const updateResponse = await app.inject({
+      method: "PATCH",
+      url: `${tasksUrl}/${task.id}`,
+      cookies,
+      payload: { body: updatedBody }
+    });
+    expect(updateResponse.statusCode).toBe(200);
+    expect(updateResponse.json().body).toBe(updatedBody);
+
+    const readResponse = await app.inject({
+      method: "GET",
+      url: `/api/v1/tasks/by-ticket/${task.ticketId}`,
+      cookies
+    });
+    expect(readResponse.statusCode).toBe(200);
+    expect(readResponse.json().body).toBe(updatedBody);
+  });
+
   it("ignores duplicate task content updates without changing task or project timestamps", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     let now = Date.parse("2026-10-31T12:00:00.000Z");
