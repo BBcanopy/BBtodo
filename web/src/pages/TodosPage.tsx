@@ -2,8 +2,9 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { api, type Task, type TodoProjectGroup } from "../api";
+import type { Task, TodoProjectGroup } from "../api";
 import { getTaskTagStyle } from "../app/tag-colors";
+import { getTodoStatus, todoQueryOptions } from "../app/todo-status";
 import { formatDateTime, formatSingleTagInput, itemStyle, normalizeTagKey, parseSingleTagInput } from "../app/utils";
 import { BoardSkeleton, EmptyState, ErrorBanner } from "../components/ui";
 
@@ -149,10 +150,9 @@ function TodoTaskCard({
 export function TodosPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const todosQuery = useQuery({
-    queryKey: ["todos"],
-    queryFn: () => api.listTodoGroups()
-  });
+  const status = getTodoStatus(searchParams.get("status"));
+  const isTodoStatus = status.key === "todo";
+  const todosQuery = useQuery(todoQueryOptions(status.key));
   const todoGroups = todosQuery.data ?? [];
   const todoSearch = searchParams.get("q")?.trim().toLowerCase() ?? "";
   const activeTagFilter = parseSingleTagInput(searchParams.get("tags") ?? "");
@@ -205,16 +205,18 @@ export function TodosPage() {
 
   return (
     <main className="page-shell page-shell--todos">
-      <title>All TODOs | BBTodo</title>
+      <title>{isTodoStatus ? "All TODOs | BBTodo" : `${status.label} tasks | BBTodo`}</title>
       {todosQuery.error ? <ErrorBanner error={todosQuery.error} /> : null}
 
       {todosQuery.isPending ? <BoardSkeleton /> : null}
 
-      {!todosQuery.isPending && todoGroups.length === 0 ? (
+      {!todosQuery.isPending && !todosQuery.error && todoGroups.length === 0 ? (
         <EmptyState
-          copy="Every board is either empty or already moving beyond the Todo lane."
+          copy={isTodoStatus
+            ? "Every board is either empty or already moving beyond the Todo lane."
+            : `Tasks will appear here when they enter a ${status.label} lane.`}
           eyebrow="All clear"
-          title="No TODOs yet."
+          title={isTodoStatus ? "No TODOs yet." : `No tasks in ${status.label}.`}
         />
       ) : null}
 
@@ -222,7 +224,7 @@ export function TodosPage() {
         <EmptyState
           copy="Try a different search term or remove the active tag filter."
           eyebrow="No matches"
-          title="No TODOs match the current filters."
+          title={isTodoStatus ? "No TODOs match the current filters." : "No tasks match the current filters."}
         />
       ) : null}
 

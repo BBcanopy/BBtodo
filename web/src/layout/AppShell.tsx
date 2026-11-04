@@ -21,6 +21,8 @@ import {
 import { api, type Project, type TaskTag, type User } from "../api";
 import { getTaskTagStyle } from "../app/tag-colors";
 import { themeOptions } from "../app/constants";
+import { getTodoStatus, todoQueryOptions } from "../app/todo-status";
+import { TodoStatusSwitcher } from "../components/TodoStatusSwitcher";
 import { useCreateProjectMutation } from "../hooks/useCreateProjectMutation";
 import {
   formatSingleTagInput,
@@ -47,6 +49,7 @@ export function AppShell({ user }: { user: User }) {
   const todosMatch = useMatch("/todos");
   const isProjectsRoute = location.pathname === "/";
   const [searchParams, setSearchParams] = useSearchParams();
+  const todoStatus = getTodoStatus(todosMatch ? searchParams.get("status") : null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProjectSwitcherOpen, setIsProjectSwitcherOpen] = useState(false);
   const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
@@ -76,8 +79,7 @@ export function AppShell({ user }: { user: User }) {
     enabled: Boolean(boardMatch || todosMatch)
   });
   const todosQuery = useQuery({
-    queryKey: ["todos"],
-    queryFn: () => api.listTodoGroups(),
+    ...todoQueryOptions(todoStatus.key),
     enabled: Boolean(todosMatch)
   });
   const createProjectMutation = useCreateProjectMutation({
@@ -424,12 +426,10 @@ export function AppShell({ user }: { user: User }) {
             </Link>
             <nav className="subnav">
               <div className="subnav__cluster subnav__cluster--primary">
-                <NavLink className={({ isActive }) => `subnav__link${isActive ? " is-active" : ""}`} to="/todos">
-                  TODOs
-                </NavLink>
+                <TodoStatusSwitcher active={Boolean(todosMatch)} />
                 {todosMatch && !todosQuery.isPending && !todosQuery.error ? (
                   <span className="label-chip label-chip--soft subnav__meta-chip" data-testid="todos-nav-count">
-                    {totalTodoCount} todos
+                    {totalTodoCount} {todoStatus.key === "todo" ? "todos" : totalTodoCount === 1 ? "task" : "tasks"}
                   </span>
                 ) : null}
                 <NavLink className={({ isActive }) => `subnav__link${isActive ? " is-active" : ""}`} end to="/">

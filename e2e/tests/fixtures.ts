@@ -395,6 +395,11 @@ export async function mockUnauthenticated(page: Page) {
   });
 }
 
+export async function selectTodoStatus(page: Page, status = "Todo") {
+  await page.getByTestId("todo-status-trigger").click();
+  await page.getByRole("option", { name: status, exact: true }).click();
+}
+
 export async function mockAuthenticated(
   page: Page,
   options?: {
@@ -581,19 +586,21 @@ export async function mockAuthenticated(
     return orderedTasks;
   }
 
-  function listTodoGroups() {
+  function listTodoGroups(status = "Todo") {
     syncAllProjects();
 
     return projectState.flatMap((project) => {
       if (project.archived) {
         return [];
       }
-      const todoLane = project.laneSummaries.find((lane) => normalizeLaneName(lane.name) === "todo");
-      if (!todoLane) {
+      const matchingLaneIds = new Set(project.laneSummaries
+        .filter((lane) => normalizeLaneName(lane.name) === normalizeLaneName(status))
+        .map((lane) => lane.id));
+      if (matchingLaneIds.size === 0) {
         return [];
       }
 
-      const todoTasks = listTasksForBoard(project.id).filter((task) => task.laneId === todoLane.id);
+      const todoTasks = listTasksForBoard(project.id).filter((task) => task.laneId && matchingLaneIds.has(task.laneId));
       if (todoTasks.length === 0) {
         return [];
       }
@@ -903,7 +910,7 @@ export async function mockAuthenticated(
         ));
         return;
       case "GET /api/v1/todos":
-        await fulfillJson(route, 200, listTodoGroups());
+        await fulfillJson(route, 200, listTodoGroups(url.searchParams.get("status") ?? "Todo"));
         return;
       case "GET /api/v1/task-tags":
         await fulfillJson(route, 200, listReusableTags());

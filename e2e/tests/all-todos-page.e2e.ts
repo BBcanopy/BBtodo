@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { laneId, mockAuthenticated, projectsForGrid, tag, tasks } from "./fixtures";
+import { laneId, mockAuthenticated, projectsForGrid, selectTodoStatus, tag, tasks } from "./fixtures";
 
 function createCaptureEvidenceTask() {
   return {
@@ -54,7 +54,7 @@ test("all todos page groups todo tasks and supports search and tag filtering", a
   });
 
   await page.goto("/");
-  await page.getByRole("link", { exact: true, name: "TODOs" }).click();
+  await selectTodoStatus(page);
 
   await expect(page).toHaveURL("/todos");
   await expect(page).toHaveTitle("All TODOs | BBTodo");
@@ -177,4 +177,133 @@ test("all todos page shows the no-match state when filters remove every todo", a
   await expect(
     page.getByText("Try a different search term or remove the active tag filter.")
   ).toBeVisible();
+});
+
+function buildStatusFixtures() {
+  const statusProjects = structuredClone(projectsForGrid);
+  const billing = statusProjects.find((project) => project.id === "project-1")!;
+  const other = statusProjects.find((project) => project.id === "project-2")!;
+  const customLane = { ...billing.laneSummaries[0], id: "billing-qa", name: "Ready   for QA", position: 4 };
+  billing.laneSummaries.push(customLane);
+  other.laneSummaries.push({ ...other.laneSummaries[0], id: "other-qa", name: "ready for qa", position: 4 });
+  billing.laneSummaries.push({ ...customLane, id: "billing-blocked", name: "Blocked", position: 5 });
+  const archived = statusProjects.find((project) => project.id === "project-6")!;
+  archived.archived = true;
+  archived.laneSummaries.push({ ...archived.laneSummaries[0], id: "archived-only", name: "Archived only", position: 4 });
+  const statusTasks = structuredClone(tasks);
+  statusTasks.push(
+    { ...statusTasks[1], id: "review-task", ticketId: "BILL-5", laneId: laneId("project-1", "in_review"), title: "Review release" },
+    { ...statusTasks[1], id: "qa-task", ticketId: "BILL-6", laneId: customLane.id, title: "Verify release" }
+  );
+  return { projects: statusProjects, tasks: statusTasks };
+}
+
+test("status selection preserves task and tag filters, URL history, and reloads", async ({ page }) => {
+  await mockAuthenticated(page, buildStatusFixtures());
+  await page.goto("/todos?q=callback&tags=oidc");
+  await expect(page.getByTestId("todo-status-trigger")).toHaveText("Todo");
+  await selectTodoStatus(page, "In Progress");
+  await expect(page).toHaveURL("/todos?q=callback&tags=oidc&status=In+Progress");
+  await expect(page.getByTestId("todo-status-trigger")).toHaveText("In Progress");
+  await expect(page.getByTestId("todo-task-card-task-2")).toBeVisible();
+  await expect(page.getByTestId("todo-task-card-task-1")).toHaveCount(0);
+  await expect(page.getByTestId("todos-nav-count")).toHaveText("1 task");
+  await expect(page).toHaveTitle("In Progress tasks | BBTodo");
+  await page.reload();
+  await expect(page.getByTestId("todo-task-card-task-2")).toBeVisible();
+  await selectTodoStatus(page, "Done");
+  await expect(page.getByRole("heading", { name: "No tasks match the current filters." })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByTestId("todo-status-trigger")).toHaveText("In Progress");
+  await expect(page.getByTestId("todo-task-card-task-2")).toBeVisible();
+  await selectTodoStatus(page);
+  await expect(page).toHaveURL("/todos?q=callback&tags=oidc");
+  await expect(page.getByTestId("todo-status-trigger")).toHaveText("Todo");
+});
+
+test("status dropdown searches and deduplicates active custom lanes and supports keyboard selection", async ({ page }) => {
+  await mockAuthenticated(page, buildStatusFixtures());
+  await page.goto("/");
+  const trigger = page.getByTestId("todo-status-trigger");
+  await trigger.click();
+  const search = page.getByRole("combobox", { name: "Search statuses" });
+  await expect(search).toBeFocused();
+  await expect(page.getByRole("option")).toHaveText(["Todo✓", "In Progress", "In review", "Done", "Blocked", "Ready for QA"]);
+  await expect(page.getByRole("option", { name: "All statuses", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("option", { name: "Archived only", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("option", { selected: true })).toHaveCount(1);
+  await search.fill("missing status");
+  await expect(page.getByText("No matching statuses.")).toBeVisible();
+  await expect(trigger).toHaveText("Todo");
+  await expect(page).toHaveURL("/");
+  await search.fill("  ReAdY  ");
+  await expect(page.getByRole("option")).toHaveCount(1);
+  await search.press("Enter");
+  await expect(page).toHaveURL("/todos?status=Ready+for+QA");
+  await expect(trigger).toHaveText("Ready for QA");
+  await expect(page.getByTestId("todo-task-card-qa-task")).toBeVisible();
+  await expect(page.getByTestId("todo-task-card-task-2")).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await expect(search).toHaveValue("");
+  await expect(page.getByRole("option", { selected: true })).toHaveText("Ready for QA✓");
+  await search.press("Escape");
+  await expect(search).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await page.getByLabel("Search todos").click();
+  await expect(search).toHaveCount(0);
+  await trigger.click();
+  await search.press("ArrowDown");
+  await search.press("ArrowDown");
+  await search.press("Enter");
+  await expect(trigger).toHaveText("In review");
+  await expect(page.getByTestId("todo-task-card-review-task")).toBeVisible();
+  await trigger.click();
+  await search.press("ArrowUp");
+  await search.press("Enter");
+  await expect(trigger).toHaveText("Ready for QA");
+});
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+  test(`status dropdown navigates from boards and stays within a ${viewport.width}px viewport`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await mockAuthenticated(page, buildStatusFixtures());
+    await page.goto("/projects/BILL?q=unrelated&tags=backend");
+    await page.getByTestId("todo-status-trigger").click();
+    await expect(page.getByRole("combobox", { name: "Search statuses" })).toBeInViewport({ ratio: 1 });
+    await expect(page.getByRole("option", { name: "Done", exact: true })).toBeInViewport({ ratio: 1 });
+    const dropdownBox = await page.locator(".todo-status-switcher__dropdown").boundingBox();
+    expect(dropdownBox).not.toBeNull();
+    expect(dropdownBox!.x).toBeGreaterThanOrEqual(0);
+    expect(dropdownBox!.x + dropdownBox!.width).toBeLessThanOrEqual(viewport.width);
+    await page.getByRole("option", { name: "Done", exact: true }).click();
+    await expect(page).toHaveURL("/todos?status=Done");
+    await expect(page.getByTestId("todo-task-card-task-3")).toBeVisible();
+    await expect(page.getByTestId("todo-task-card-task-1")).toHaveCount(0);
+    await expect(page.getByTestId("todo-status-trigger")).toHaveText("Done");
+    await selectTodoStatus(page, "Blocked");
+    await expect(page.getByRole("heading", { name: "No tasks in Blocked." })).toBeVisible();
+    await expect(page).toHaveTitle("Blocked tasks | BBTodo");
+    await page.getByRole("link", { name: "Projects", exact: true }).click();
+    await expect(page.getByTestId("todo-status-trigger")).toHaveText("Todo");
+  });
+}
+
+test("status dropdown shows loading and API failure states", async ({ page }) => {
+  await mockAuthenticated(page);
+  let releaseRequest!: () => void;
+  const requestGate = new Promise<void>((resolve) => { releaseRequest = resolve; });
+  await page.route("**/api/v1/projects", async (route) => {
+    await requestGate;
+    await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Could not load board statuses." }) });
+  });
+  await page.goto("/settings/api-tokens");
+  await page.getByTestId("todo-status-trigger").click();
+  await expect(page.getByText("Loading statuses...")).toBeVisible();
+  releaseRequest();
+  await expect(page.getByText("Could not load board statuses.")).toBeVisible();
+  await expect(page.getByRole("option")).toHaveCount(0);
+  await page.getByRole("combobox", { name: "Search statuses" }).press("Enter");
+  await expect(page).toHaveURL("/settings/api-tokens");
 });

@@ -2613,6 +2613,7 @@ export function BoardPage() {
     projectTicketPrefixes?: string[];
   }) {
     const invalidations = [
+      queryClient.invalidateQueries({ queryKey: ["todos"] }),
       queryClient.invalidateQueries({ queryKey: ["task-tags"] }),
       queryClient.invalidateQueries({ queryKey: ["projects"] })
     ];
@@ -2765,6 +2766,7 @@ export function BoardPage() {
         currentTasks ? mergeSavedTaskIntoTasks(currentTasks, updatedTask) : currentTasks
       );
       void queryClient.invalidateQueries({ queryKey: ["task-tags"] });
+      void queryClient.invalidateQueries({ queryKey: ["todos"] });
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
     }
   });

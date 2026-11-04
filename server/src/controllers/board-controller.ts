@@ -9,6 +9,7 @@ import {
   laneParamsSchema,
   laneResponseSchema,
   listProjectsQuerySchema,
+  listTodosQuerySchema,
   projectParamsSchema,
   projectTicketPrefixParamsSchema,
   projectResponseSchema,
@@ -80,9 +81,11 @@ export function registerBoardController(
     method: "GET",
     url: "/api/v1/todos",
     schema: {
+      querystring: listTodosQuerySchema,
       security: apiDocsSecurity,
       response: {
         200: todoProjectGroupsResponseSchema,
+        400: errorResponseSchema,
         401: errorResponseSchema
       },
       tags: ["tasks"]
@@ -94,7 +97,9 @@ export function registerBoardController(
       }
 
       return todoProjectGroupsResponseSchema.parse(
-        listTodoProjectGroupsForUser(database, user.id).map((group) => toTodoProjectGroupResponse(group))
+        listTodoProjectGroupsForUser(database, user.id, request.query.status).map((group) =>
+          toTodoProjectGroupResponse(group)
+        )
       );
     }
   });
