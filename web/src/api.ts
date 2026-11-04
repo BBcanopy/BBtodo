@@ -176,8 +176,9 @@ export const api = {
   listProjects(includeArchived = false) {
     return request<Project[]>(`/api/v1/projects${includeArchived ? "?includeArchived=true" : ""}`);
   },
-  listTodoGroups() {
-    return request<TodoProjectGroup[]>("/api/v1/todos");
+  listTodoGroups(status = "Todo") {
+    const params = new URLSearchParams({ status });
+    return request<TodoProjectGroup[]>(`/api/v1/todos?${params}`);
   },
   listTaskTags() {
     return request<TaskTag[]>("/api/v1/task-tags");

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { mockAuthenticated, projects, projectsForGrid } from "./fixtures";
+import { mockAuthenticated, projects, projectsForGrid, selectTodoStatus } from "./fixtures";
 
 async function acceptArchiveConfirmation(page: Page, trigger: () => Promise<void>) {
   await trigger();
@@ -92,7 +92,7 @@ test("project archiving hides the last active board and cached TODOs, then resto
   await expect(showArchived).toBeVisible();
   await expect(showArchived).not.toBeChecked();
 
-  await page.getByRole("link", { name: "TODOs", exact: true }).click();
+  await selectTodoStatus(page);
   await expect(page.getByTestId("todo-project-group-project-1")).toHaveCount(0);
   await expect(page.getByTestId("todos-nav-count")).toHaveText("0 todos");
   await expect(page.getByRole("heading", { name: "No TODOs yet." })).toBeVisible();
@@ -113,7 +113,7 @@ test("project archiving hides the last active board and cached TODOs, then resto
   await expect(showArchived).not.toBeChecked();
   await expect(card).toBeVisible();
 
-  await page.getByRole("link", { name: "TODOs", exact: true }).click();
+  await selectTodoStatus(page);
   await expect(page.getByTestId("todo-project-group-project-1")).toBeVisible();
   await expect(page.getByTestId("todos-nav-count")).toHaveText("2 todos");
 });
@@ -223,7 +223,7 @@ for (const viewport of [
     await expect(page.getByRole("button", { name: "Project settings", exact: true })).toBeVisible();
     const boardSearch = await page.getByLabel("Search cards").boundingBox();
     const boardTags = await page.locator(".subnav__search--tag-filter").boundingBox();
-    await page.getByRole("link", { name: "TODOs", exact: true }).click();
+    await selectTodoStatus(page);
     const todoSearch = await page.getByLabel("Search todos").boundingBox();
     const todoTags = await page.locator(".subnav__search--tag-filter").boundingBox();
     expect(boardSearch).not.toBeNull();

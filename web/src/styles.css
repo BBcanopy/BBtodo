@@ -904,6 +904,87 @@ h3 {
   color: var(--ink);
 }
 
+.todo-status-switcher {
+  position: relative;
+  min-width: 0;
+  max-width: min(16rem, 42vw);
+}
+
+.todo-status-switcher__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.todo-status-switcher__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-status-switcher__trigger svg {
+  flex-shrink: 0;
+}
+
+.todo-status-switcher__dropdown {
+  position: absolute;
+  top: calc(100% + 0.7rem);
+  left: 0;
+  z-index: 40;
+  display: grid;
+  gap: 0.5rem;
+  width: min(20rem, calc(100vw - 3.5rem));
+  padding: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface-popover);
+  box-shadow: 0 24px 48px -24px rgba(18, 34, 36, 0.3);
+  backdrop-filter: blur(22px);
+}
+
+.todo-status-switcher__dropdown input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding-inline: 0.75rem;
+}
+
+.todo-status-switcher__options {
+  display: grid;
+  max-height: min(20rem, 55dvh);
+  overflow-y: auto;
+}
+
+.todo-status-switcher__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 0;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.todo-status-switcher__option[data-highlighted="true"] {
+  background: var(--surface-muted);
+}
+
+.todo-status-switcher__option[aria-selected="true"] {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .project-switcher__dropdown {
   position: absolute;
   top: calc(100% + 0.7rem);

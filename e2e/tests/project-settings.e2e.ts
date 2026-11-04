@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { mockAuthenticated } from "./fixtures";
+import { mockAuthenticated, selectTodoStatus } from "./fixtures";
 
 async function chooseSetting(page: Page, name: string) {
   await page.getByRole("button", { name: "Project settings", exact: true }).click();
@@ -48,7 +48,7 @@ test("settings support keyboard navigation and rename updates the board, Project
   await expect(page.locator(".subnav__current-value")).toHaveText("Billing relaunch");
   expect(renames).toBe(1);
 
-  await page.getByRole("link", { name: "TODOs", exact: true }).click();
+  await selectTodoStatus(page);
   await expect(page.getByTestId("todo-project-group-project-1").getByRole("heading")).toHaveText("Billing relaunch");
   await page.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page.getByTestId("project-card-project-1").getByRole("heading")).toHaveText("Billing relaunch");
@@ -153,7 +153,7 @@ test("delete requires confirmation, preserves the board on failure, and returns 
   await expect(page.getByTestId("project-card-project-1")).toHaveCount(0);
   await expect(page.getByTestId("toast-notice")).toContainText("Board deleted");
   expect(deletes).toBe(2);
-  await page.getByRole("link", { name: "TODOs", exact: true }).click();
+  await selectTodoStatus(page);
   await expect(page.getByTestId("todos-nav-count")).toHaveText("0 todos");
   await expect(page.getByTestId("todo-project-group-project-1")).toHaveCount(0);
 });

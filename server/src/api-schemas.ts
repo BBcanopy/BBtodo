@@ -85,6 +85,10 @@ export const todoProjectGroupResponseSchema = z.object({
 });
 export const todoProjectGroupsResponseSchema = z.array(todoProjectGroupResponseSchema);
 
+export const listTodosQuerySchema = z.object({
+  status: z.string().trim().min(1).max(80).default("Todo")
+});
+
 export const apiTokenSummarySchema = z.object({
   id: z.string(),
   name: z.string(),

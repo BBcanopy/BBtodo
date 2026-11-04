@@ -2739,7 +2739,7 @@ test("board page switcher renames and creates projects while guarding protected 
 
   const projectsLink = page.getByRole("link", { exact: true, name: "Projects" });
   const switcherButton = page.getByRole("button", { name: "Open project switcher" });
-  const todoLink = page.getByRole("link", { exact: true, name: "TODOs" });
+  const todoLink = page.getByTestId("todo-status-trigger");
   const [projectsBox, switcherBox, todoBox] = await Promise.all([
     projectsLink.boundingBox(),
     switcherButton.boundingBox(),

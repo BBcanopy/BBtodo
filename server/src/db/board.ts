@@ -649,7 +649,7 @@ export function listProjectsForUser(
   }));
 }
 
-export function listTodoProjectGroupsForUser(db: DatabaseClient, userId: string) {
+export function listTodoProjectGroupsForUser(db: DatabaseClient, userId: string, status = "Todo") {
   const projectRows = db
     .select()
     .from(projects)
@@ -668,16 +668,21 @@ export function listTodoProjectGroupsForUser(db: DatabaseClient, userId: string)
     .where(inArray(lanes.projectId, projectIds))
     .orderBy(asc(lanes.position), asc(lanes.createdAt))
     .all();
-  const todoLanesByProjectId = new Map<string, LaneRecord>();
+  const matchingLanesByProjectId = new Map<string, LaneRecord[]>();
+  const statusKey = normalizeLaneName(status);
 
   for (const lane of laneRows) {
-    if (!todoLanesByProjectId.has(lane.projectId) && normalizeLaneName(lane.name) === "todo") {
-      todoLanesByProjectId.set(lane.projectId, lane);
+    if (normalizeLaneName(lane.name) === statusKey) {
+      const matchingLanes = matchingLanesByProjectId.get(lane.projectId) ?? [];
+      matchingLanes.push(lane);
+      matchingLanesByProjectId.set(lane.projectId, matchingLanes);
     }
   }
 
-  const todoLaneIds = Array.from(todoLanesByProjectId.values(), (lane) => lane.id);
-  if (todoLaneIds.length === 0) {
+  const matchingLaneIds = Array.from(matchingLanesByProjectId.values()).flatMap((projectLanes) =>
+    projectLanes.map((lane) => lane.id)
+  );
+  if (matchingLaneIds.length === 0) {
     return [];
   }
 
@@ -686,7 +691,7 @@ export function listTodoProjectGroupsForUser(db: DatabaseClient, userId: string)
     db
       .select()
       .from(tasks)
-      .where(inArray(tasks.laneId, todoLaneIds))
+      .where(inArray(tasks.laneId, matchingLaneIds))
       .all()
   );
 
@@ -703,10 +708,10 @@ export function listTodoProjectGroupsForUser(db: DatabaseClient, userId: string)
   });
 
   return projectRows.flatMap((project) => {
-    const todoLane = todoLanesByProjectId.get(project.id);
+    const matchingLanes = matchingLanesByProjectId.get(project.id) ?? [];
     const projectTasks = tasksByProjectId.get(project.id) ?? [];
 
-    if (!todoLane || projectTasks.length === 0) {
+    if (matchingLanes.length === 0 || projectTasks.length === 0) {
       return [];
     }
 
@@ -715,7 +720,7 @@ export function listTodoProjectGroupsForUser(db: DatabaseClient, userId: string)
         projectId: project.id,
         projectName: project.name,
         projectTicketPrefix: requireProjectTicketPrefix(project),
-        tasks: orderTasksForProject(projectTasks, [todoLane])
+        tasks: orderTasksForProject(projectTasks, matchingLanes)
       }
     ];
   });
