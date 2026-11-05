@@ -8,6 +8,7 @@ export const OIDC_NONCE_COOKIE = "bbtodo_oidc_nonce";
 export const OIDC_STATE_COOKIE = "bbtodo_oidc_state";
 export const OIDC_VERIFIER_COOKIE = "bbtodo_oidc_verifier";
 export const OIDC_OAUTH_NAMESPACE = "oidcOAuth2";
+export const OIDC_REQUEST_TIMEOUT_MS = 10_000;
 
 const oidcDiscoverySchema = z.object({
   issuer: z.url(),
@@ -92,6 +93,7 @@ export interface OidcAuthTestingOptions {
   jwtVerifier?: JwtVerifier;
   onAuthorizationNonce?: (nonce: string) => void;
   oauth2Namespace?: OidcOAuth2Namespace;
+  requestTimeoutMs?: number;
 }
 
 interface DecodedJwtHeaderLike {
@@ -166,6 +168,68 @@ export function mergeOidcRefreshToken(
   return {
     ...refreshedToken,
     refresh_token: refreshedToken.refresh_token ?? currentToken.refresh_token
+  };
+}
+
+interface OidcTokenRequestFailure {
+  code?: unknown;
+  data?: {
+    isResponseError?: boolean;
+    payload?: { error?: unknown } | null;
+  } | null;
+  isBoom?: boolean;
+  message?: unknown;
+  output?: { statusCode?: number };
+}
+
+// OAuth error codes that describe the provider or this client rather than the user's grant.
+const OAUTH_ERRORS_UNRELATED_TO_GRANT = new Set([
+  "invalid_client",
+  "server_error",
+  "temporarily_unavailable"
+]);
+
+/**
+ * Whether a failed refresh says nothing about the user's grant, so the session should survive it.
+ *
+ * simple-oauth2 rejects with Boom errors and sets data.isResponseError only for JSON responses.
+ * Network failures, timeouts and non-JSON pages never have it, and a gateway's HTML 500 arrives as
+ * a 406, so the status alone is not enough. Anything else ends the session, because signing in
+ * again is always possible while a session that keeps failing would leave the user stuck.
+ */
+export function isTemporaryOidcRefreshFailure(error: unknown) {
+  const failure = error as OidcTokenRequestFailure | null | undefined;
+  if (!failure?.isBoom) {
+    return false;
+  }
+
+  if (!failure.data?.isResponseError) {
+    return true;
+  }
+
+  const statusCode = failure.output?.statusCode ?? 0;
+  const oauthError = failure.data.payload?.error;
+
+  return (
+    statusCode >= 500 ||
+    statusCode === 408 ||
+    statusCode === 429 ||
+    (typeof oauthError === "string" && OAUTH_ERRORS_UNRELATED_TO_GRANT.has(oauthError))
+  );
+}
+
+/**
+ * The fields of a failed refresh that are safe to log. Never log the error itself: its
+ * data.response leads to the request's Authorization header, which holds the client secret.
+ */
+export function describeOidcRefreshFailure(error: unknown) {
+  const failure = error as OidcTokenRequestFailure | null | undefined;
+
+  return {
+    code: failure?.code,
+    message: failure?.message,
+    oauthError: failure?.data?.payload?.error,
+    statusCode: failure?.output?.statusCode
   };
 }
 

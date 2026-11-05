@@ -28,6 +28,7 @@ import { registerBoardController } from "./controllers/board-controller.js";
 import { SQLITE_DATABASE_PATH, createDatabase } from "./db.js";
 import {
   OIDC_OAUTH_NAMESPACE,
+  OIDC_REQUEST_TIMEOUT_MS,
   OIDC_STATE_COOKIE,
   OIDC_VERIFIER_COOKIE,
   createJwksSecretResolver,
@@ -144,6 +145,9 @@ export function buildApp(options: {
           client: {
             id: options.config.oidcClientId,
             secret: options.config.oidcClientSecret
+          },
+          http: {
+            timeout: authTesting?.requestTimeoutMs ?? OIDC_REQUEST_TIMEOUT_MS
           }
         },
         discovery: {

@@ -12,7 +12,9 @@ import {
   updateSession
 } from "../db.js";
 import {
+  describeOidcRefreshFailure,
   deserializeOidcOAuthToken,
+  isTemporaryOidcRefreshFailure,
   mergeOidcRefreshToken,
   normalizeOidcOAuthToken,
   type OidcOAuth2Namespace
@@ -61,7 +63,10 @@ export interface ApiAuthContext {
   user: UserRecord;
 }
 
-const pendingSessionRefreshes = new Map<string, Promise<SessionAuthContext | null>>();
+const SESSION_REFRESH_UNAVAILABLE = "session-refresh-unavailable";
+type SessionResolution = SessionAuthContext | typeof SESSION_REFRESH_UNAVAILABLE | null;
+
+const pendingSessionRefreshes = new Map<string, Promise<SessionResolution>>();
 
 function getSessionSupport(app: FastifyInstance) {
   return app[SESSION_SUPPORT_DECORATION];
@@ -134,7 +139,7 @@ async function resolveSessionAuthContext(
   app: FastifyInstance,
   db: DatabaseClient,
   sessionId: string
-) {
+): Promise<SessionResolution> {
   const sessionWithUser = getSessionWithUser(db, sessionId);
   if (!sessionWithUser) {
     return null;
@@ -204,10 +209,22 @@ async function resolveSessionAuthContext(
           user: latestSessionWithUser.user
         } satisfies SessionAuthContext;
       } catch (error) {
+        const isTemporary = isTemporaryOidcRefreshFailure(error);
+
         app.log.warn(
-          { err: error, sessionFingerprint: formatSessionIdForLog(sessionId) },
-          "OIDC session refresh failed."
+          {
+            failure: describeOidcRefreshFailure(error),
+            sessionFingerprint: formatSessionIdForLog(sessionId)
+          },
+          isTemporary
+            ? "OIDC session refresh failed temporarily; keeping the session."
+            : "OIDC session refresh failed."
         );
+
+        if (isTemporary) {
+          return SESSION_REFRESH_UNAVAILABLE;
+        }
+
         deleteSession(db, sessionId);
         return null;
       } finally {
@@ -258,6 +275,13 @@ export async function getApiAuthContext(
   }
 
   const auth = await resolveSessionAuthContext(app, db, sessionId);
+  if (auth === SESSION_REFRESH_UNAVAILABLE) {
+    reply.status(503).send({
+      message: "Your sign-in provider is temporarily unavailable. Please try again shortly."
+    });
+    return null;
+  }
+
   if (!auth) {
     reply.clearCookie(SESSION_COOKIE, {
       path: "/"
