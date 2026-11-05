@@ -22,6 +22,7 @@ import { api, type Project, type TaskTag, type User } from "../api";
 import { getTaskTagStyle } from "../app/tag-colors";
 import { themeOptions } from "../app/constants";
 import { getTodoStatus, todoQueryOptions } from "../app/todo-status";
+import { subscribeToLostEdits } from "../app/unsavedEdits";
 import { TodoStatusSwitcher } from "../components/TodoStatusSwitcher";
 import { useCreateProjectMutation } from "../hooks/useCreateProjectMutation";
 import {
@@ -265,6 +266,18 @@ export function AppShell({ user }: { user: User }) {
     nextParams.delete("authNotice");
     setSearchParams(nextParams, { replace: true });
   }, [authNotice, searchParams, setSearchParams]);
+
+  useEffect(
+    () =>
+      subscribeToLostEdits((ticketId) => {
+        setToast({
+          message: `Your latest edits to ${ticketId} could not be saved. Open the card and enter them again.`,
+          title: "Changes not saved",
+          tone: "warning"
+        });
+      }),
+    []
+  );
 
   useEffect(() => {
     if (!toast) {

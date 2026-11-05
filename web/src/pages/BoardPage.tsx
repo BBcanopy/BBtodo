@@ -46,6 +46,7 @@ import {
   getTaskTagStyle,
   taskTagColorOptions
 } from "../app/tag-colors";
+import { reportLostEdits, useUnsavedEditsGuard } from "../app/unsavedEdits";
 import {
   formatSingleTagInput,
   getTaskInputLabel,
@@ -1603,6 +1604,7 @@ function TaskEditorDialog({
   const isMountedRef = useRef(true);
   const pendingSaveRequestRef = useRef<TaskEditorSaveRequest | null>(null);
   const persistedDraftRef = useRef(toTaskEditorDraft(task));
+  const onPersistRef = useRef(onPersist);
   const requestCloseRef = useRef<() => void>(() => {});
   const saveLoopPromiseRef = useRef<Promise<void> | null>(null);
   const movePopoverRef = useRef<HTMLDivElement | null>(null);
@@ -1616,11 +1618,23 @@ function TaskEditorDialog({
   const titleRef = useRef(title);
 
   bodyRef.current = body;
+  onPersistRef.current = onPersist;
   persistedTaskRef.current = persistedTask;
   selectedTagsRef.current = selectedTags;
   tagInputColorRef.current = tagInputColor;
   tagInputValueRef.current = tagInputValue;
   titleRef.current = title;
+
+  useUnsavedEditsGuard(
+    !areTaskEditorDraftsEqual(
+      {
+        body,
+        tags: mergeUniqueTags(selectedTags, tagInputValue, tagInputColor),
+        title: title.trim()
+      },
+      toTaskEditorDraft(persistedTask)
+    )
+  );
 
   const destinationProject =
     availableProjects.find((project) => project.id === destinationProjectId) ?? null;
@@ -1722,12 +1736,12 @@ function TaskEditorDialog({
 
       try {
         const updatedTask = await onPersist(request.draft);
+        persistedDraftRef.current = toTaskEditorDraft(updatedTask);
+        persistedTaskRef.current = updatedTask;
         if (!isMountedRef.current) {
           return;
         }
 
-        persistedDraftRef.current = toTaskEditorDraft(updatedTask);
-        persistedTaskRef.current = updatedTask;
         setPersistedTask(updatedTask);
         request.waiters.forEach((waiter) => waiter.resolve(updatedTask));
       } catch (error) {
@@ -1910,6 +1924,28 @@ function TaskEditorDialog({
     void requestClose();
   };
 
+  // Saves whatever is still unsaved when the editor goes away without a close request, such as
+  // pressing Back before the autosave timer fires. It runs after any save already in flight so
+  // the older draft can't overwrite this one, and has to read everything from refs.
+  function flushUnsavedEdits() {
+    const draft: TaskEditorDraft = {
+      body: bodyRef.current,
+      tags: cloneTaskTags(
+        mergeUniqueTags(selectedTagsRef.current, tagInputValueRef.current, tagInputColorRef.current)
+      ),
+      // The API requires a title, and a blank one shouldn't cost the rest of the edit.
+      title: titleRef.current.trim() || persistedDraftRef.current.title
+    };
+
+    void (saveLoopPromiseRef.current ?? Promise.resolve())
+      .then(() => {
+        if (!areTaskEditorDraftsEqual(draft, persistedDraftRef.current)) {
+          return onPersistRef.current(draft);
+        }
+      })
+      .catch(() => reportLostEdits(persistedTaskRef.current.ticketId));
+  }
+
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
       if (event.key !== "Escape") {
@@ -1960,6 +1996,8 @@ function TaskEditorDialog({
         pendingRequest.waiters.forEach((waiter) => waiter.reject(error));
         pendingSaveRequestRef.current = null;
       }
+
+      flushUnsavedEdits();
     };
   }, []);
 
@@ -2132,7 +2170,17 @@ function TaskEditorDialog({
               ) : null}
             </div>
           </div>
-          {saveError ? <ErrorBanner error={saveError} /> : null}
+          {isApiError(saveError, 401) ? (
+            <p className="error-banner">
+              Your session has expired, but your changes are still here.{" "}
+              <a href="/auth/login" rel="noopener" target="_blank">
+                Sign in again in a new tab
+              </a>
+              , then save this card.
+            </p>
+          ) : saveError ? (
+            <ErrorBanner error={saveError} />
+          ) : null}
           <div className="task-editor__footer">
             <dl aria-label="Card timing" className="task-editor__meta task-editor__meta--footer">
               <div className="task-editor__meta-item">
@@ -2746,25 +2794,32 @@ export function BoardPage() {
   });
 
   const saveTaskMutation = useMutation({
+    // Takes the project from the card, not the page: the editor can flush its last save while the
+    // page is already showing another board, or after the page has gone away.
     mutationFn: ({
       body,
+      projectId,
       tags,
       taskId,
       title
     }: {
       body: string;
+      projectId: string;
       tags: TaskTag[];
       taskId: string;
       title: string;
-    }) => api.updateTask(resolvedProjectId ?? "", taskId, { body, tags, title }),
+    }) => api.updateTask(projectId, taskId, { body, tags, title }),
     onSuccess: (updatedTask) => {
-      if (!resolvedProjectId) {
-        return;
-      }
-
-      queryClient.setQueryData<Task[]>(["tasks", resolvedProjectId], (currentTasks) =>
+      queryClient.setQueryData<Task[]>(["tasks", updatedTask.projectId], (currentTasks) =>
         currentTasks ? mergeSavedTaskIntoTasks(currentTasks, updatedTask) : currentTasks
       );
+
+      // A successful save proves the session works again, so an earlier failed /me must not send
+      // the user to the login page the moment their edits stop being unsaved.
+      if (queryClient.getQueryState(["me"])?.error) {
+        queryClient.setQueryData(["me"], (currentUser: unknown) => currentUser);
+      }
+
       void queryClient.invalidateQueries({ queryKey: ["task-tags"] });
       void queryClient.invalidateQueries({ queryKey: ["todos"] });
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
@@ -3351,6 +3406,7 @@ export function BoardPage() {
           onPersist={({ body, tags, title }) =>
             saveTaskMutation.mutateAsync({
               body,
+              projectId: editingTask.projectId,
               tags,
               taskId: editingTask.id,
               title

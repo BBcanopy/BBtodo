@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { api, isApiError } from "./api";
 import { queryClient } from "./app/queryClient";
+import { useHasUnsavedEdits } from "./app/unsavedEdits";
 import { ErrorBanner, LoadingState } from "./components/ui";
 import { AppShell } from "./layout/AppShell";
 import { ApiTokensPage } from "./pages/ApiTokensPage";
@@ -18,6 +19,7 @@ function AuthenticatedApp() {
     queryKey: ["me"],
     queryFn: () => api.getMe()
   });
+  const hasUnsavedEdits = useHasUnsavedEdits();
   const resolvedTheme = meQuery.data?.theme ?? "sea";
 
   useEffect(() => {
@@ -28,11 +30,13 @@ function AuthenticatedApp() {
     return <LoadingState />;
   }
 
-  if (isApiError(meQuery.error, 401)) {
+  // Replacing the app unmounts any open editor, so an expired session waits while edits are unsaved.
+  if (isApiError(meQuery.error, 401) && !hasUnsavedEdits) {
     return <LoginPage />;
   }
 
-  if (meQuery.error) {
+  // A failed background refetch still has the last known user, so it must not take the app down.
+  if (!meQuery.data) {
     return (
       <main className="centered-state">
         <title>BBTodo</title>
