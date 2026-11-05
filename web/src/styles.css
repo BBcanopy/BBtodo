@@ -3612,6 +3612,12 @@ textarea:focus {
   color: #7b281f;
 }
 
+.error-banner a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 .toast-stack {
   position: fixed;
   top: 1.35rem;

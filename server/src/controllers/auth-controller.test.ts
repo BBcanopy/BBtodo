@@ -400,7 +400,7 @@ describe("auth routes", () => {
     );
   });
 
-  it("clears the session when refresh fails", async () => {
+  it("clears the session when refresh fails unexpectedly", async () => {
     const sqlitePath = createTempSqlitePath();
     const oidc = createMutableMockOidcProvider({
       subject: "refresh-error",

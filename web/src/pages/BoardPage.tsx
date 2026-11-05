@@ -47,6 +47,12 @@ import {
   taskTagColorOptions
 } from "../app/tag-colors";
 import {
+  getLatestQueuedTaskSave,
+  reportLostEdits,
+  runTaskSaveInOrder,
+  useReportUnsavedEdits
+} from "../app/unsavedEdits";
+import {
   formatSingleTagInput,
   getTaskInputLabel,
   isDoneLaneName,
@@ -1583,16 +1589,20 @@ function TaskEditorDialog({
   onPersist: (input: { body: string; tags: TaskTag[]; title: string }) => Promise<Task>;
   task: Task;
 }) {
-  const [title, setTitle] = useState(task.title);
-  const [body, setBody] = useState(task.body);
-  const [selectedTags, setSelectedTags] = useState(() => cloneTaskTags(task.tags));
+  // A card reopened while an earlier editor's save is pending starts from that text and treats it
+  // as saved. The cached card is out of date, and saving it back would overwrite the newer text.
+  const [queuedSave] = useState(() => getLatestQueuedTaskSave(task.id));
+  const initialTask = queuedSave ? { ...task, ...queuedSave.draft } : task;
+  const [title, setTitle] = useState(initialTask.title);
+  const [body, setBody] = useState(initialTask.body);
+  const [selectedTags, setSelectedTags] = useState(() => cloneTaskTags(initialTask.tags));
   const [tagInputColor, setTagInputColor] = useState<TaskTagColor>(() => getRandomTaskTagColor());
   const [tagInputValue, setTagInputValue] = useState("");
   const [activeView, setActiveView] = useState<TaskEditorView>("source");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMovePopoverOpen, setIsMovePopoverOpen] = useState(false);
   const [moveProjectQuery, setMoveProjectQuery] = useState("");
-  const [persistedTask, setPersistedTask] = useState(task);
+  const [persistedTask, setPersistedTask] = useState(initialTask);
   const [destinationProjectId, setDestinationProjectId] = useState("");
   const [moveError, setMoveError] = useState<unknown>(null);
   const [saveError, setSaveError] = useState<unknown>(null);
@@ -1602,7 +1612,8 @@ function TaskEditorDialog({
   const closeRequestPendingRef = useRef(false);
   const isMountedRef = useRef(true);
   const pendingSaveRequestRef = useRef<TaskEditorSaveRequest | null>(null);
-  const persistedDraftRef = useRef(toTaskEditorDraft(task));
+  const persistedDraftRef = useRef(toTaskEditorDraft(initialTask));
+  const onPersistRef = useRef(onPersist);
   const requestCloseRef = useRef<() => void>(() => {});
   const saveLoopPromiseRef = useRef<Promise<void> | null>(null);
   const movePopoverRef = useRef<HTMLDivElement | null>(null);
@@ -1616,11 +1627,23 @@ function TaskEditorDialog({
   const titleRef = useRef(title);
 
   bodyRef.current = body;
+  onPersistRef.current = onPersist;
   persistedTaskRef.current = persistedTask;
   selectedTagsRef.current = selectedTags;
   tagInputColorRef.current = tagInputColor;
   tagInputValueRef.current = tagInputValue;
   titleRef.current = title;
+
+  useReportUnsavedEdits(
+    !areTaskEditorDraftsEqual(
+      {
+        body,
+        tags: mergeUniqueTags(selectedTags, tagInputValue, tagInputColor),
+        title: title.trim()
+      },
+      toTaskEditorDraft(persistedTask)
+    )
+  );
 
   const destinationProject =
     availableProjects.find((project) => project.id === destinationProjectId) ?? null;
@@ -1721,13 +1744,15 @@ function TaskEditorDialog({
       setIsSavePending(true);
 
       try {
-        const updatedTask = await onPersist(request.draft);
+        const updatedTask = await runTaskSaveInOrder(task.id, request.draft, () =>
+          onPersistRef.current(request.draft)
+        );
+        persistedDraftRef.current = toTaskEditorDraft(updatedTask);
+        persistedTaskRef.current = updatedTask;
         if (!isMountedRef.current) {
           return;
         }
 
-        persistedDraftRef.current = toTaskEditorDraft(updatedTask);
-        persistedTaskRef.current = updatedTask;
         setPersistedTask(updatedTask);
         request.waiters.forEach((waiter) => waiter.resolve(updatedTask));
       } catch (error) {
@@ -1910,6 +1935,45 @@ function TaskEditorDialog({
     void requestClose();
   };
 
+  // Saves whatever is still unsaved when the editor goes away without a close request, such as
+  // pressing Back before the autosave timer fires. It has to read everything from refs.
+  function flushUnsavedEdits() {
+    const draft: TaskEditorDraft = {
+      body: bodyRef.current,
+      tags: cloneTaskTags(
+        mergeUniqueTags(selectedTagsRef.current, tagInputValueRef.current, tagInputColorRef.current)
+      ),
+      // The API requires a title, and a blank one shouldn't cost the rest of the edit.
+      title: titleRef.current.trim() || persistedDraftRef.current.title
+    };
+
+    if (!saveLoopPromiseRef.current && areTaskEditorDraftsEqual(draft, persistedDraftRef.current)) {
+      return;
+    }
+
+    void runTaskSaveInOrder(persistedTaskRef.current.id, draft, async () => {
+      // A save in flight may turn out to have covered this draft. StrictMode's simulated unmount
+      // also lands here, and by now the editor is mounted again and still owns its edits.
+      if (!isMountedRef.current && !areTaskEditorDraftsEqual(draft, persistedDraftRef.current)) {
+        await onPersistRef.current(draft);
+      }
+    }).catch(() => reportLostEdits(persistedTaskRef.current.ticketId));
+  }
+
+  // If the earlier save fails, the text this editor started from never reached the server, so
+  // measuring against the last known card again makes it count as unsaved.
+  useEffect(() => {
+    void queuedSave?.save.catch(() => {
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      persistedDraftRef.current = toTaskEditorDraft(task);
+      persistedTaskRef.current = task;
+      setPersistedTask(task);
+    });
+  }, []);
+
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
       if (event.key !== "Escape") {
@@ -1960,6 +2024,8 @@ function TaskEditorDialog({
         pendingRequest.waiters.forEach((waiter) => waiter.reject(error));
         pendingSaveRequestRef.current = null;
       }
+
+      flushUnsavedEdits();
     };
   }, []);
 
@@ -2132,7 +2198,17 @@ function TaskEditorDialog({
               ) : null}
             </div>
           </div>
-          {saveError ? <ErrorBanner error={saveError} /> : null}
+          {isApiError(saveError, 401) ? (
+            <p className="error-banner">
+              Your session has expired, but your changes are still here.{" "}
+              <a href="/auth/login" rel="noopener" target="_blank">
+                Sign in again in a new tab
+              </a>
+              , then save this card.
+            </p>
+          ) : saveError ? (
+            <ErrorBanner error={saveError} />
+          ) : null}
           <div className="task-editor__footer">
             <dl aria-label="Card timing" className="task-editor__meta task-editor__meta--footer">
               <div className="task-editor__meta-item">
@@ -2746,25 +2822,32 @@ export function BoardPage() {
   });
 
   const saveTaskMutation = useMutation({
+    // Takes the project from the card, not the page: the editor can flush its last save while the
+    // page is already showing another board, or after the page has gone away.
     mutationFn: ({
       body,
+      projectId,
       tags,
       taskId,
       title
     }: {
       body: string;
+      projectId: string;
       tags: TaskTag[];
       taskId: string;
       title: string;
-    }) => api.updateTask(resolvedProjectId ?? "", taskId, { body, tags, title }),
+    }) => api.updateTask(projectId, taskId, { body, tags, title }),
     onSuccess: (updatedTask) => {
-      if (!resolvedProjectId) {
-        return;
-      }
-
-      queryClient.setQueryData<Task[]>(["tasks", resolvedProjectId], (currentTasks) =>
+      queryClient.setQueryData<Task[]>(["tasks", updatedTask.projectId], (currentTasks) =>
         currentTasks ? mergeSavedTaskIntoTasks(currentTasks, updatedTask) : currentTasks
       );
+
+      // A successful save proves the session works again, so an earlier failed /me must not send
+      // the user to the login page the moment their edits stop being unsaved.
+      if (queryClient.getQueryState(["me"])?.error) {
+        queryClient.setQueryData(["me"], (currentUser: unknown) => currentUser);
+      }
+
       void queryClient.invalidateQueries({ queryKey: ["task-tags"] });
       void queryClient.invalidateQueries({ queryKey: ["todos"] });
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
@@ -3351,6 +3434,7 @@ export function BoardPage() {
           onPersist={({ body, tags, title }) =>
             saveTaskMutation.mutateAsync({
               body,
+              projectId: editingTask.projectId,
               tags,
               taskId: editingTask.id,
               title

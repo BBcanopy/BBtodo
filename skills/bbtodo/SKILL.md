@@ -28,8 +28,10 @@ Then edit `.\skills\bbtodo\scripts\.env`:
 
 ```dotenv
 BBTODO_API_TOKEN=replace-with-your-token
-BBTODO_BASE_URL=https://app.bbtodo.com
+BBTODO_BASE_URL=https://bbtodo.example.com
 ```
+
+`BBTODO_BASE_URL` is required and has no default. Set it to the address of your BBTodo instance, because the helper sends your API token there.
 
 ## Workflow
 

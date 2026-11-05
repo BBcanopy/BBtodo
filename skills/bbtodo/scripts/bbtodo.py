@@ -373,6 +373,15 @@ def require_api_token(config: ScriptConfig) -> None:
     )
 
 
+def require_base_url(config: ScriptConfig) -> None:
+    if config.base_url:
+        return
+    raise BBTodoError(
+        "Missing BBTodo base URL. Add BBTODO_BASE_URL to "
+        f"{config.env_file}, export it in the current shell, or pass --base-url."
+    )
+
+
 def require_tracked_task_context(state: dict[str, Any], state_file: Path) -> tuple[str, str, str, str]:
     project = state.get("project")
     task = state.get("task")
@@ -395,9 +404,9 @@ def build_config(args: argparse.Namespace) -> ScriptConfig:
     env_file_values = parse_env_file(env_file)
     worktree = resolve_worktree(args.worktree)
 
-    base_url = normalize_base_url(
-        resolve_config_value(args.base_url, "BBTODO_BASE_URL", env_file_values, "https://app.bbtodo.com")
-    )
+    # No default: a forgotten setting must not send the API token to a host the user didn't choose.
+    raw_base_url = resolve_config_value(args.base_url, "BBTODO_BASE_URL", env_file_values)
+    base_url = normalize_base_url(raw_base_url) if raw_base_url else ""
     api_token, api_token_source = resolve_api_token(getattr(args, "api_token", None), env_file_values)
     project_name = resolve_config_value(
         args.project_name,
@@ -437,6 +446,7 @@ def build_config(args: argparse.Namespace) -> ScriptConfig:
 def command_start(args: argparse.Namespace) -> None:
     config = build_config(args)
     require_api_token(config)
+    require_base_url(config)
 
     request_body = read_text_argument(args.body, args.body_file)
     client = BBTodoClient(config.base_url, config.api_token)
@@ -752,8 +762,13 @@ def command_token_status(args: argparse.Namespace) -> None:
         "envFileExists": config.env_file.exists(),
         "exists": bool(config.api_token),
     }
+    messages: list[str] = []
     if not config.api_token:
-        payload["message"] = f"Add BBTODO_API_TOKEN to {config.env_file} or pass --api-token."
+        messages.append(f"Add BBTODO_API_TOKEN to {config.env_file} or pass --api-token.")
+    if not config.base_url:
+        messages.append(f"Add BBTODO_BASE_URL to {config.env_file} or pass --base-url.")
+    if messages:
+        payload["message"] = " ".join(messages)
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 

@@ -1021,8 +1021,10 @@ export function createLane(
     updatedAt: now
   };
 
-  db.insert(lanes).values(lane).run();
-  touchProject(db, input.projectId, now);
+  db.transaction((tx) => {
+    tx.insert(lanes).values(lane).run();
+    touchProject(tx, input.projectId, now);
+  });
 
   return {
     ...lane,
@@ -1063,22 +1065,24 @@ export function updateOwnedLane(
 
   const updatedAt = new Date().toISOString();
 
-  reorderedLanes.forEach((candidate, index) => {
-    if (candidate.position === index && candidate.id !== lane.id) {
-      return;
-    }
+  db.transaction((tx) => {
+    reorderedLanes.forEach((candidate, index) => {
+      if (candidate.position === index && candidate.id !== lane.id) {
+        return;
+      }
 
-    db
-      .update(lanes)
-      .set({
-        position: index,
-        updatedAt
-      })
-      .where(eq(lanes.id, candidate.id))
-      .run();
+      tx
+        .update(lanes)
+        .set({
+          position: index,
+          updatedAt
+        })
+        .where(eq(lanes.id, candidate.id))
+        .run();
+    });
+
+    touchProject(tx, input.projectId, updatedAt);
   });
-
-  touchProject(db, input.projectId, updatedAt);
 
   return db.select().from(lanes).where(eq(lanes.id, input.laneId)).get() ?? null;
 }
@@ -1556,37 +1560,40 @@ function moveOwnedTaskToProject(
   };
 }
 
-export function updateOwnedTask(
-  db: DatabaseClient,
-  input: {
-    body?: string;
-    destinationProjectId?: string;
-    laneId?: string;
-    parentTaskId?: string | null;
-    position?: number;
-    projectId: string;
-    taskId: string;
-    tags?: TaskTagInput[];
-    title?: string;
-    userId: string;
-  }
-) {
-  if (input.destinationProjectId && input.destinationProjectId !== input.projectId) {
-    const destinationProjectId = input.destinationProjectId;
+type UpdateOwnedTaskInput = {
+  body?: string;
+  destinationProjectId?: string;
+  laneId?: string;
+  parentTaskId?: string | null;
+  position?: number;
+  projectId: string;
+  taskId: string;
+  tags?: TaskTagInput[];
+  title?: string;
+  userId: string;
+};
 
-    return db.transaction((tx) =>
-      moveOwnedTaskToProject(tx, {
+export function updateOwnedTask(db: DatabaseClient, input: UpdateOwnedTaskInput) {
+  // A reorder rewrites the position of every sibling. Outside a transaction each row is its
+  // own synced commit, which blocks the event loop and can leave a lane half reordered.
+  return db.transaction((tx) => {
+    if (input.destinationProjectId && input.destinationProjectId !== input.projectId) {
+      return moveOwnedTaskToProject(tx, {
         body: input.body,
-        destinationProjectId,
+        destinationProjectId: input.destinationProjectId,
         projectId: input.projectId,
         tags: input.tags,
         taskId: input.taskId,
         title: input.title,
         userId: input.userId
-      })
-    );
-  }
+      });
+    }
 
+    return updateTaskWithinProject(tx, input);
+  });
+}
+
+function updateTaskWithinProject(db: DatabaseClient, input: UpdateOwnedTaskInput) {
   const task = getOwnedTask(db, input);
   if (!task) {
     return {
