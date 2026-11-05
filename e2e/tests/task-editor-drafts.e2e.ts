@@ -52,6 +52,43 @@ async function openCardInNewHistoryEntry(page: Page, startPath: string, cardPath
   }, cardPath);
 }
 
+// Holds the first card save at the network until released, and records every save as it is sent.
+async function holdFirstTaskSave(page: Page) {
+  const saves: Array<{ body: string; title: string }> = [];
+  let release = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await page.route("**/api/v1/projects/*/tasks/*", async (route) => {
+    if (!isTaskSave(route.request())) {
+      await route.fallback();
+      return;
+    }
+
+    saves.push(route.request().postDataJSON());
+    if (saves.length === 1) {
+      await released;
+    }
+
+    await route.fallback();
+  });
+
+  return {
+    bodies: () => saves.map((save) => save.body),
+    lastSave: () => saves.at(-1),
+    release: () => release()
+  };
+}
+
+function wouldPromptBeforeUnload(page: Page) {
+  return page.evaluate(() => {
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+}
+
 test("an API outage on tab refocus keeps the open editor and typed text", async ({ page }) => {
   const editDialog = await openEditor(page);
   const endOutage = await failApi(page, 503, "Service unavailable");
@@ -217,14 +254,209 @@ test("a save that fails after leaving the card warns that the changes were lost"
   await expect(toast).toContainText("BILL-1");
 });
 
+test("a card reopened during older saves shows their text and saves last", async ({ page }) => {
+  await mockAuthenticated(page, { projects: projectsForGrid, tasks });
+  const { bodies, release } = await holdFirstTaskSave(page);
+  await page.goto("/todos");
+  await page.getByLabel("Open todo BILL-1").click();
+
+  const editDialog = page.getByRole("dialog", { name: "Edit BILL-1" });
+  const bodyField = editDialog.getByLabel("Task body");
+
+  await bodyField.fill("Body A");
+  await expect.poll(bodies).toEqual(["Body A"]);
+  await bodyField.fill("Body B");
+  await page.goBack();
+  await expect(page).toHaveURL(/\/todos$/);
+
+  await page.getByLabel("Open todo BILL-1").click();
+  await expect(bodyField).toHaveValue("Body B");
+
+  await bodyField.fill("Body C");
+  await editDialog.getByRole("button", { name: "Save card" }).click();
+  await page.waitForTimeout(300);
+  expect(bodies()).toEqual(["Body A"]);
+
+  release();
+  await expect.poll(bodies).toEqual(["Body A", "Body B", "Body C"]);
+
+  await editDialog.getByRole("button", { exact: true, name: "Close" }).click();
+  await expect(editDialog).toHaveCount(0);
+  await page.getByTestId("task-card-task-1").click();
+  await expect(bodyField).toHaveValue("Body C");
+});
+
+test("editing only the title of a reopened card keeps the text from the older save", async ({ page }) => {
+  await mockAuthenticated(page, { projects: projectsForGrid, tasks });
+  const { bodies, lastSave, release } = await holdFirstTaskSave(page);
+  await page.goto("/todos");
+  await page.getByLabel("Open todo BILL-1").click();
+
+  const editDialog = page.getByRole("dialog", { name: "Edit BILL-1" });
+
+  await editDialog.getByLabel("Task body").fill("Body A");
+  await expect.poll(bodies).toEqual(["Body A"]);
+  await editDialog.getByLabel("Task body").fill("Body B");
+  await page.goBack();
+  await expect(page).toHaveURL(/\/todos$/);
+
+  await page.getByLabel("Open todo BILL-1").click();
+  await editDialog.getByLabel("Title").fill("Renamed after reopening");
+  await editDialog.getByRole("button", { name: "Save card" }).click();
+  release();
+
+  await expect.poll(lastSave).toMatchObject({ body: "Body B", title: "Renamed after reopening" });
+});
+
+test("restoring the original text in a reopened card still overwrites the older saves", async ({ page }) => {
+  await mockAuthenticated(page, { projects: projectsForGrid, tasks });
+  const { bodies, release } = await holdFirstTaskSave(page);
+  await page.goto("/todos");
+  await page.getByLabel("Open todo BILL-1").click();
+
+  const editDialog = page.getByRole("dialog", { name: "Edit BILL-1" });
+  const bodyField = editDialog.getByLabel("Task body");
+  const originalBody = await bodyField.inputValue();
+
+  await bodyField.fill("Body A");
+  await expect.poll(bodies).toEqual(["Body A"]);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/todos$/);
+
+  await page.getByLabel("Open todo BILL-1").click();
+  await expect(bodyField).toHaveValue("Body A");
+  await bodyField.fill(originalBody);
+  await editDialog.getByRole("button", { name: "Save card" }).click();
+  release();
+
+  await expect.poll(bodies).toEqual(["Body A", originalBody]);
+});
+
+test("closing a reopened card sends nothing more once the older saves succeed", async ({ page }) => {
+  await mockAuthenticated(page, { projects: projectsForGrid, tasks });
+  const { bodies, release } = await holdFirstTaskSave(page);
+  await page.goto("/todos");
+  await page.getByLabel("Open todo BILL-1").click();
+
+  const editDialog = page.getByRole("dialog", { name: "Edit BILL-1" });
+  const bodyField = editDialog.getByLabel("Task body");
+
+  await bodyField.fill("Body A");
+  await expect.poll(bodies).toEqual(["Body A"]);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/todos$/);
+
+  await page.getByLabel("Open todo BILL-1").click();
+  await expect(bodyField).toHaveValue("Body A");
+  release();
+
+  await expect.poll(() => wouldPromptBeforeUnload(page)).toBe(false);
+  await editDialog.getByRole("button", { exact: true, name: "Close" }).click();
+  await expect(editDialog).toHaveCount(0);
+  expect(bodies()).toEqual(["Body A"]);
+});
+
+test("a reopened card saves the older text itself when the older save fails", async ({ page }) => {
+  await mockAuthenticated(page, {
+    projects: projectsForGrid,
+    // Both the save in flight and the closed editor's follow-up save fail.
+    taskPatchFailuresById: { "task-1": 2 },
+    tasks
+  });
+  const { bodies, release } = await holdFirstTaskSave(page);
+  await page.goto("/todos");
+  await page.getByLabel("Open todo BILL-1").click();
+
+  const editDialog = page.getByRole("dialog", { name: "Edit BILL-1" });
+  const bodyField = editDialog.getByLabel("Task body");
+
+  await bodyField.fill("Body A");
+  await expect.poll(bodies).toEqual(["Body A"]);
+  await bodyField.fill("Body B");
+  await page.goBack();
+  await expect(page).toHaveURL(/\/todos$/);
+
+  await page.getByLabel("Open todo BILL-1").click();
+  await expect(bodyField).toHaveValue("Body B");
+  release();
+
+  await expect(page.getByTestId("toast-notice")).toContainText("Changes not saved");
+  await expect(bodyField).toHaveValue("Body B");
+  await expect.poll(() => wouldPromptBeforeUnload(page)).toBe(true);
+
+  await editDialog.getByRole("button", { exact: true, name: "Close" }).click();
+  await expect(editDialog).toHaveCount(0);
+  expect(bodies()).toEqual(["Body A", "Body B", "Body B"]);
+
+  await page.getByTestId("task-card-task-1").click();
+  await expect(bodyField).toHaveValue("Body B");
+});
+
+test("losing edits to an expired session warns on the login page", async ({ page }) => {
+  await mockAuthenticated(page, { projects: projectsForGrid, tasks });
+  await page.goto("/todos");
+  await page.getByLabel("Open todo BILL-1").click();
+
+  const editDialog = page.getByRole("dialog", { name: "Edit BILL-1" });
+  await expect(editDialog).toBeVisible();
+
+  await failApi(page, 401, "Authentication required.");
+  await editDialog.getByLabel("Task body").fill(typedBody);
+  await refocusTabUntilMeFails(page, 401);
+  await page.goBack();
+
+  await expect(page.getByRole("button", { name: "Sign in with OIDC" })).toBeVisible();
+
+  const toast = page.getByTestId("toast-notice");
+  await expect(toast).toContainText("Changes not saved");
+  await expect(toast).toContainText("BILL-1");
+
+  await toast.getByRole("button").click();
+  await expect(toast).toHaveCount(0);
+});
+
+test("closing the tab prompts while an older save is pending and the text matches the card again", async ({
+  page
+}) => {
+  const editDialog = await openEditor(page);
+  const { bodies, lastSave, release } = await holdFirstTaskSave(page);
+  const bodyField = editDialog.getByLabel("Task body");
+  const originalBody = await bodyField.inputValue();
+
+  await bodyField.fill("Intermediate text");
+  await expect.poll(bodies).toEqual(["Intermediate text"]);
+  await bodyField.fill(originalBody);
+
+  expect(await wouldPromptBeforeUnload(page)).toBe(true);
+
+  release();
+  await expect.poll(lastSave).toMatchObject({ body: originalBody });
+  await expect.poll(() => wouldPromptBeforeUnload(page)).toBe(false);
+});
+
+test("closing the tab prompts while the save from a closed editor is pending", async ({ page }) => {
+  await mockAuthenticated(page, { projects: projectsForGrid, tasks });
+  const { bodies, release } = await holdFirstTaskSave(page);
+  await page.goto("/todos");
+  await page.getByLabel("Open todo BILL-1").click();
+
+  const editDialog = page.getByRole("dialog", { name: "Edit BILL-1" });
+  await expect(editDialog).toBeVisible();
+
+  await editDialog.getByLabel("Task body").fill(typedBody);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/todos$/);
+  await expect.poll(bodies).toEqual([typedBody]);
+
+  expect(await wouldPromptBeforeUnload(page)).toBe(true);
+
+  release();
+  await expect.poll(() => wouldPromptBeforeUnload(page)).toBe(false);
+});
+
 test("closing the tab prompts only while there are unsaved edits", async ({ page }) => {
   const editDialog = await openEditor(page);
-  const wouldPrompt = () =>
-    page.evaluate(() => {
-      const event = new Event("beforeunload", { cancelable: true });
-      window.dispatchEvent(event);
-      return event.defaultPrevented;
-    });
+  const wouldPrompt = () => wouldPromptBeforeUnload(page);
 
   expect(await wouldPrompt()).toBe(false);
 

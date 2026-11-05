@@ -1,11 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { api, isApiError } from "./api";
 import { queryClient } from "./app/queryClient";
-import { useHasUnsavedEdits } from "./app/unsavedEdits";
-import { ErrorBanner, LoadingState } from "./components/ui";
+import { subscribeToLostEdits, useHasUnsavedEdits, useWarnBeforeUnload } from "./app/unsavedEdits";
+import { ErrorBanner, LoadingState, ToastNotice } from "./components/ui";
 import { AppShell } from "./layout/AppShell";
 import { ApiTokensPage } from "./pages/ApiTokensPage";
 import { BoardPage } from "./pages/BoardPage";
@@ -21,6 +21,8 @@ function AuthenticatedApp() {
   });
   const hasUnsavedEdits = useHasUnsavedEdits();
   const resolvedTheme = meQuery.data?.theme ?? "sea";
+
+  useWarnBeforeUnload(hasUnsavedEdits);
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
@@ -63,11 +65,33 @@ function AuthenticatedApp() {
   );
 }
 
+// Sits above the app shell because an expired session can replace the shell with the login page
+// just as the failed save reports the loss. It stays until dismissed because the text is gone.
+function LostEditsNotice() {
+  const [ticketId, setTicketId] = useState<string | null>(null);
+
+  useEffect(() => subscribeToLostEdits(setTicketId), []);
+
+  if (!ticketId) {
+    return null;
+  }
+
+  return (
+    <ToastNotice
+      message={`Your latest edits to ${ticketId} could not be saved. Open the card and enter them again.`}
+      onDismiss={() => setTicketId(null)}
+      title="Changes not saved"
+      tone="warning"
+    />
+  );
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthenticatedApp />
+        <LostEditsNotice />
       </BrowserRouter>
     </QueryClientProvider>
   );

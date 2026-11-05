@@ -46,7 +46,12 @@ import {
   getTaskTagStyle,
   taskTagColorOptions
 } from "../app/tag-colors";
-import { reportLostEdits, useUnsavedEditsGuard } from "../app/unsavedEdits";
+import {
+  getLatestQueuedTaskSave,
+  reportLostEdits,
+  runTaskSaveInOrder,
+  useReportUnsavedEdits
+} from "../app/unsavedEdits";
 import {
   formatSingleTagInput,
   getTaskInputLabel,
@@ -1584,16 +1589,20 @@ function TaskEditorDialog({
   onPersist: (input: { body: string; tags: TaskTag[]; title: string }) => Promise<Task>;
   task: Task;
 }) {
-  const [title, setTitle] = useState(task.title);
-  const [body, setBody] = useState(task.body);
-  const [selectedTags, setSelectedTags] = useState(() => cloneTaskTags(task.tags));
+  // A card reopened while an earlier editor's save is pending starts from that text and treats it
+  // as saved. The cached card is out of date, and saving it back would overwrite the newer text.
+  const [queuedSave] = useState(() => getLatestQueuedTaskSave(task.id));
+  const initialTask = queuedSave ? { ...task, ...queuedSave.draft } : task;
+  const [title, setTitle] = useState(initialTask.title);
+  const [body, setBody] = useState(initialTask.body);
+  const [selectedTags, setSelectedTags] = useState(() => cloneTaskTags(initialTask.tags));
   const [tagInputColor, setTagInputColor] = useState<TaskTagColor>(() => getRandomTaskTagColor());
   const [tagInputValue, setTagInputValue] = useState("");
   const [activeView, setActiveView] = useState<TaskEditorView>("source");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMovePopoverOpen, setIsMovePopoverOpen] = useState(false);
   const [moveProjectQuery, setMoveProjectQuery] = useState("");
-  const [persistedTask, setPersistedTask] = useState(task);
+  const [persistedTask, setPersistedTask] = useState(initialTask);
   const [destinationProjectId, setDestinationProjectId] = useState("");
   const [moveError, setMoveError] = useState<unknown>(null);
   const [saveError, setSaveError] = useState<unknown>(null);
@@ -1603,7 +1612,7 @@ function TaskEditorDialog({
   const closeRequestPendingRef = useRef(false);
   const isMountedRef = useRef(true);
   const pendingSaveRequestRef = useRef<TaskEditorSaveRequest | null>(null);
-  const persistedDraftRef = useRef(toTaskEditorDraft(task));
+  const persistedDraftRef = useRef(toTaskEditorDraft(initialTask));
   const onPersistRef = useRef(onPersist);
   const requestCloseRef = useRef<() => void>(() => {});
   const saveLoopPromiseRef = useRef<Promise<void> | null>(null);
@@ -1625,7 +1634,7 @@ function TaskEditorDialog({
   tagInputValueRef.current = tagInputValue;
   titleRef.current = title;
 
-  useUnsavedEditsGuard(
+  useReportUnsavedEdits(
     !areTaskEditorDraftsEqual(
       {
         body,
@@ -1735,7 +1744,9 @@ function TaskEditorDialog({
       setIsSavePending(true);
 
       try {
-        const updatedTask = await onPersist(request.draft);
+        const updatedTask = await runTaskSaveInOrder(task.id, request.draft, () =>
+          onPersistRef.current(request.draft)
+        );
         persistedDraftRef.current = toTaskEditorDraft(updatedTask);
         persistedTaskRef.current = updatedTask;
         if (!isMountedRef.current) {
@@ -1925,8 +1936,7 @@ function TaskEditorDialog({
   };
 
   // Saves whatever is still unsaved when the editor goes away without a close request, such as
-  // pressing Back before the autosave timer fires. It runs after any save already in flight so
-  // the older draft can't overwrite this one, and has to read everything from refs.
+  // pressing Back before the autosave timer fires. It has to read everything from refs.
   function flushUnsavedEdits() {
     const draft: TaskEditorDraft = {
       body: bodyRef.current,
@@ -1937,14 +1947,32 @@ function TaskEditorDialog({
       title: titleRef.current.trim() || persistedDraftRef.current.title
     };
 
-    void (saveLoopPromiseRef.current ?? Promise.resolve())
-      .then(() => {
-        if (!areTaskEditorDraftsEqual(draft, persistedDraftRef.current)) {
-          return onPersistRef.current(draft);
-        }
-      })
-      .catch(() => reportLostEdits(persistedTaskRef.current.ticketId));
+    if (!saveLoopPromiseRef.current && areTaskEditorDraftsEqual(draft, persistedDraftRef.current)) {
+      return;
+    }
+
+    void runTaskSaveInOrder(persistedTaskRef.current.id, draft, async () => {
+      // A save in flight may turn out to have covered this draft. StrictMode's simulated unmount
+      // also lands here, and by now the editor is mounted again and still owns its edits.
+      if (!isMountedRef.current && !areTaskEditorDraftsEqual(draft, persistedDraftRef.current)) {
+        await onPersistRef.current(draft);
+      }
+    }).catch(() => reportLostEdits(persistedTaskRef.current.ticketId));
   }
+
+  // If the earlier save fails, the text this editor started from never reached the server, so
+  // measuring against the last known card again makes it count as unsaved.
+  useEffect(() => {
+    void queuedSave?.save.catch(() => {
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      persistedDraftRef.current = toTaskEditorDraft(task);
+      persistedTaskRef.current = task;
+      setPersistedTask(task);
+    });
+  }, []);
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
