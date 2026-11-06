@@ -11,6 +11,24 @@ async function acceptArchiveConfirmation(page: Page, trigger: () => Promise<void
   await confirmation.getByRole("button", { name: "Archive", exact: true }).click();
 }
 
+function archivedMenuItem(page: Page) {
+  return page.getByRole("menuitemcheckbox", { name: "Archived", exact: true });
+}
+
+async function setArchivedBoardsShown(page: Page, shown: boolean) {
+  await page.getByLabel("Open account menu").click();
+  await archivedMenuItem(page).setChecked(shown);
+  await page.keyboard.press("Escape");
+  await expect(archivedMenuItem(page)).toHaveCount(0);
+}
+
+async function expectArchivedBoardsShown(page: Page, shown: boolean) {
+  await page.getByLabel("Open account menu").click();
+  await expect(archivedMenuItem(page)).toBeChecked({ checked: shown });
+  await page.keyboard.press("Escape");
+  await expect(archivedMenuItem(page)).toHaveCount(0);
+}
+
 test("archiving reuses deletion confirmation styling and dismissing leaves the project unchanged", async ({ page }) => {
   await mockAuthenticated(page);
   let archiveUpdates = 0;
@@ -88,9 +106,8 @@ test("project archiving hides the last active board and cached TODOs, then resto
   await page.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page.getByTestId("project-card-project-1")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "No active boards." })).toBeVisible();
-  const showArchived = page.getByRole("checkbox", { name: "Show archived" });
-  await expect(showArchived).toBeVisible();
-  await expect(showArchived).not.toBeChecked();
+  await expect(page.getByText("Create a project or turn on Archived in the account menu to find an archived board.", { exact: true })).toBeVisible();
+  await expectArchivedBoardsShown(page, false);
 
   await selectTodoStatus(page);
   await expect(page.getByTestId("todo-project-group-project-1")).toHaveCount(0);
@@ -98,7 +115,7 @@ test("project archiving hides the last active board and cached TODOs, then resto
   await expect(page.getByRole("heading", { name: "No TODOs yet." })).toBeVisible();
 
   await page.getByRole("link", { name: "Projects", exact: true }).click();
-  await showArchived.check();
+  await setArchivedBoardsShown(page, true);
   const card = page.getByTestId("project-card-project-1");
   await expect(card.getByText("Archived", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Project settings", exact: true })).toHaveCount(0);
@@ -110,7 +127,7 @@ test("project archiving hides the last active board and cached TODOs, then resto
   await page.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(card.getByText("Archived", { exact: true })).toHaveCount(0);
   await expect(card.getByLabel("Todo 2", { exact: true })).toBeVisible();
-  await expect(showArchived).not.toBeChecked();
+  await expectArchivedBoardsShown(page, false);
   await expect(card).toBeVisible();
 
   await selectTodoStatus(page);
@@ -122,26 +139,25 @@ test("show archived uses the URL, preserves search parameters, and survives relo
   const mixedProjects = projectsForGrid.map((project) => ({ ...project, archived: project.id === "project-1" }));
   await mockAuthenticated(page, { projects: mixedProjects });
   await page.goto("/?q=bill&keep=yes&showArchived=false");
-  const showArchived = page.getByRole("checkbox", { name: "Show archived" });
-  await expect(showArchived).not.toBeChecked();
+  await expectArchivedBoardsShown(page, false);
   await expect(page.getByTestId("project-card-project-1")).toHaveCount(0);
 
-  await showArchived.check();
+  await setArchivedBoardsShown(page, true);
   await expect(page).toHaveURL("/?q=bill&keep=yes&showArchived=true");
   await expect(page.getByTestId("project-card-project-1")).toBeVisible();
   await expect(page.getByTestId("project-card-project-2")).toHaveCount(0);
   await page.reload();
-  await expect(showArchived).toBeChecked();
+  await expectArchivedBoardsShown(page, true);
   await page.getByTestId("project-card-project-1").click();
   await expect(page).toHaveURL("/projects/BILL");
   await page.goBack();
   await expect(page).toHaveURL("/?q=bill&keep=yes&showArchived=true");
-  await expect(showArchived).toBeChecked();
-  await showArchived.uncheck();
+  await expectArchivedBoardsShown(page, true);
+  await setArchivedBoardsShown(page, false);
   await expect(page).toHaveURL("/?q=bill&keep=yes");
   await expect(page.getByTestId("project-card-project-1")).toHaveCount(0);
   await page.getByLabel("Search boards").fill("");
-  await showArchived.check();
+  await setArchivedBoardsShown(page, true);
   await expect(page.getByTestId("project-card-project-1")).toBeVisible();
   await expect(page.getByTestId("project-card-project-2")).toBeVisible();
 
@@ -154,6 +170,67 @@ for (const viewport of [
   { name: "desktop", width: 1440, height: 900 },
   { name: "mobile", width: 390, height: 844 }
 ]) {
+  test(`archived toggle lives in the account menu on ${viewport.name}`, async ({ page }) => {
+    await mockAuthenticated(page, { projects: projectsForGrid });
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto("/");
+
+    const item = archivedMenuItem(page);
+    const eyeIcon = item.locator("svg.archived-icon--shown");
+    const crossedEyeIcon = item.locator("svg.archived-icon--hidden");
+    const openMenu = page.getByLabel("Open account menu");
+
+    await expect(page.getByTestId("project-card-project-1")).toBeVisible();
+    await expect(item).toHaveCount(0);
+    await expect(page.getByText("Show archived", { exact: true })).toHaveCount(0);
+
+    const [topbarBounds, gridBounds] = await Promise.all([
+      page.getByTestId("app-topbar-shell").boundingBox(),
+      page.locator(".project-grid").boundingBox()
+    ]);
+    expect(topbarBounds).not.toBeNull();
+    expect(gridBounds).not.toBeNull();
+    expect(gridBounds!.y - (topbarBounds!.y + topbarBounds!.height)).toBeLessThanOrEqual(24);
+
+    await openMenu.click();
+    await expect(page.getByRole("menu").getByRole("menuitemcheckbox", { name: "Archived", exact: true })).toBeInViewport({ ratio: 1 });
+    await expect(item).toHaveText("Archived");
+    await expect(item).toHaveAttribute("title", "Show archived boards");
+    await expect(item).not.toBeChecked();
+    await expect(crossedEyeIcon).toBeVisible();
+    await expect(eyeIcon).toHaveCount(0);
+
+    await item.focus();
+    await page.keyboard.press("Space");
+    await expect(item).toBeChecked();
+    await expect(item).toBeFocused();
+    await expect(page).toHaveURL("/?showArchived=true");
+    await expect(item).toHaveAttribute("title", "Hide archived boards");
+    await expect(eyeIcon).toBeVisible();
+    await expect(crossedEyeIcon).toHaveCount(0);
+
+    await page.reload();
+    await openMenu.click();
+    await expect(item).toBeChecked();
+    await expect(eyeIcon).toBeVisible();
+    await item.click();
+    await expect(item).not.toBeChecked();
+    await expect(page).toHaveURL("/");
+    await expect(crossedEyeIcon).toBeVisible();
+    await expect(eyeIcon).toHaveCount(0);
+
+    await page.getByTestId("project-card-project-1").click();
+    await expect(page).toHaveURL("/projects/BILL");
+    await openMenu.click();
+    await expect(page.getByRole("menuitem", { name: "API tokens", exact: true })).toBeVisible();
+    await expect(item).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await selectTodoStatus(page);
+    await openMenu.click();
+    await expect(page.getByRole("menuitem", { name: "API tokens", exact: true })).toBeVisible();
+    await expect(item).toHaveCount(0);
+  });
+
   test(`project settings offer archive, delete, and rename after the tag filter on ${viewport.name}`, async ({ page }) => {
     const mixedProjects = projectsForGrid.map((project) => ({ ...project, archived: project.id === "project-1" }));
     await mockAuthenticated(page, { projects: mixedProjects });
@@ -275,7 +352,7 @@ for (const archived of [false, true]) {
     await expect(action).toBeEnabled();
     await expect(page).toHaveURL(path);
     await page.getByRole("link", { name: "Projects", exact: true }).click();
-    await page.getByRole("checkbox", { name: "Show archived" }).check();
+    await setArchivedBoardsShown(page, true);
     const card = page.getByTestId("project-card-project-1");
     await expect(card).toBeVisible();
     await expect(card.getByText("Archived", { exact: true })).toHaveCount(archived ? 1 : 0);
@@ -320,14 +397,14 @@ test("project creation and deletion keep active and inclusive project lists cohe
   await expect(page).toHaveURL("/projects/FRES");
   await page.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page.getByTestId("project-card-project-7")).toBeVisible();
-  await page.getByLabel("Show archived").check();
+  await setArchivedBoardsShown(page, true);
   const card = page.getByTestId("project-card-project-7");
   await expect(card).toBeVisible();
   await card.getByLabel("Delete board Fresh board").click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }).click();
   await expect(card).toHaveCount(0);
   await expect(page.getByTestId("toast-notice")).toContainText("Board deleted");
-  await page.getByLabel("Show archived").uncheck();
+  await setArchivedBoardsShown(page, false);
   await expect(card).toHaveCount(0);
   await expect(page.getByTestId("project-card-project-1")).toBeVisible();
 });

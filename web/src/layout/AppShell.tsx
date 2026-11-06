@@ -22,6 +22,7 @@ import { api, type Project, type TaskTag, type User } from "../api";
 import { getTaskTagStyle } from "../app/tag-colors";
 import { themeOptions } from "../app/constants";
 import { getTodoStatus, todoQueryOptions } from "../app/todo-status";
+import { ArchivedToggle } from "../components/ArchivedToggle";
 import { TodoStatusSwitcher } from "../components/TodoStatusSwitcher";
 import { useCreateProjectMutation } from "../hooks/useCreateProjectMutation";
 import {
@@ -732,6 +733,7 @@ export function AppShell({ user }: { user: User }) {
                     </div>
                     {themeMutation.error ? <ErrorBanner error={themeMutation.error} /> : null}
                   </div>
+                  {isProjectsRoute ? <ArchivedToggle /> : null}
                   <Link
                     className="menu-item"
                     onClick={() => setIsMenuOpen(false)}
