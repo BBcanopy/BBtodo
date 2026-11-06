@@ -321,12 +321,6 @@ export function ProjectsPage() {
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const composerInputRef = useRef<HTMLInputElement | null>(null);
   const showArchived = searchParams.get("showArchived") === "true";
-  // Keep the checkbox responsive while React Router commits the URL change.
-  const [isArchiveToggleChecked, setIsArchiveToggleChecked] = useState(showArchived);
-
-  useEffect(() => {
-    setIsArchiveToggleChecked(showArchived);
-  }, [showArchived]);
   const projectsQuery = useQuery({
     queryKey: showArchived ? ["projects", { includeArchived: true }] : ["projects"],
     queryFn: () => api.listProjects(showArchived)
@@ -470,27 +464,6 @@ export function ProjectsPage() {
       {projectsQuery.error ? <ErrorBanner error={projectsQuery.error} /> : null}
       {deleteProjectMutation.error ? <ErrorBanner error={deleteProjectMutation.error} /> : null}
 
-      <div className="projects-toolbar">
-        <label className="projects-archive-toggle">
-          <input
-            checked={isArchiveToggleChecked}
-            onChange={(event) => {
-              const checked = event.target.checked;
-              setIsArchiveToggleChecked(checked);
-              updateRouteParams((params) => {
-                if (checked) {
-                  params.set("showArchived", "true");
-                } else {
-                  params.delete("showArchived");
-                }
-              });
-            }}
-            type="checkbox"
-          />
-          Show archived
-        </label>
-      </div>
-
       {projectsQuery.isPending ? <ProjectGridSkeleton /> : null}
 
       {!projectsQuery.isPending && projects.length === 0 ? (
@@ -498,7 +471,7 @@ export function ProjectsPage() {
           copy={
             showArchived
               ? "Create the first project to open a board with Todo, In Progress, In review, and Done ready to go."
-              : "Create a project or enable Show archived to find an archived board."
+              : "Create a project or turn on Archived to find an archived board."
           }
           eyebrow="Empty workspace"
           title={showArchived ? "No boards yet." : "No active boards."}

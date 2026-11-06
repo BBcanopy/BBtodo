@@ -22,6 +22,7 @@ import { api, type Project, type TaskTag, type User } from "../api";
 import { getTaskTagStyle } from "../app/tag-colors";
 import { themeOptions } from "../app/constants";
 import { getTodoStatus, todoQueryOptions } from "../app/todo-status";
+import { ArchivedToggle } from "../components/ArchivedToggle";
 import { TodoStatusSwitcher } from "../components/TodoStatusSwitcher";
 import { useCreateProjectMutation } from "../hooks/useCreateProjectMutation";
 import {
@@ -529,7 +530,7 @@ export function AppShell({ user }: { user: User }) {
               </div>
               {showNavSearch ? (
                 <div className="subnav__cluster subnav__cluster--tools">
-                  <label className="subnav__search">
+                  <label className={`subnav__search${isProjectsRoute ? " subnav__search--beside-toggle" : ""}`}>
                     <input
                       aria-label={navSearchLabel}
                       onChange={(event) => updateNavSearch(event.target.value)}
@@ -539,6 +540,7 @@ export function AppShell({ user }: { user: User }) {
                       value={navSearch}
                     />
                   </label>
+                  {isProjectsRoute ? <ArchivedToggle /> : null}
                   {isTaskSearchRoute ? (
                     <div className="subnav__search subnav__search--tag-filter" ref={tagFilterRef}>
                       <div
