@@ -530,7 +530,7 @@ export function AppShell({ user }: { user: User }) {
               </div>
               {showNavSearch ? (
                 <div className="subnav__cluster subnav__cluster--tools">
-                  <label className={`subnav__search${isProjectsRoute ? " subnav__search--beside-toggle" : ""}`}>
+                  <label className="subnav__search">
                     <input
                       aria-label={navSearchLabel}
                       onChange={(event) => updateNavSearch(event.target.value)}
@@ -540,7 +540,6 @@ export function AppShell({ user }: { user: User }) {
                       value={navSearch}
                     />
                   </label>
-                  {isProjectsRoute ? <ArchivedToggle /> : null}
                   {isTaskSearchRoute ? (
                     <div className="subnav__search subnav__search--tag-filter" ref={tagFilterRef}>
                       <div
@@ -734,6 +733,7 @@ export function AppShell({ user }: { user: User }) {
                     </div>
                     {themeMutation.error ? <ErrorBanner error={themeMutation.error} /> : null}
                   </div>
+                  {isProjectsRoute ? <ArchivedToggle /> : null}
                   <Link
                     className="menu-item"
                     onClick={() => setIsMenuOpen(false)}

@@ -6,7 +6,7 @@ import { EyeIcon, EyeOffIcon } from "./ui";
 export function ArchivedToggle() {
   const [searchParams, setSearchParams] = useSearchParams();
   const showArchived = searchParams.get("showArchived") === "true";
-  // Keep the checkbox responsive while React Router commits the URL change.
+  // Keep the menu item responsive while React Router commits the URL change.
   const [isChecked, setIsChecked] = useState(showArchived);
 
   useEffect(() => {
@@ -14,32 +14,31 @@ export function ArchivedToggle() {
   }, [showArchived]);
 
   return (
-    <label className="subnav__archive-toggle">
-      <input
-        checked={isChecked}
-        onChange={(event) => {
-          const checked = event.target.checked;
-          setIsChecked(checked);
+    <button
+      aria-checked={isChecked}
+      className="menu-item menu-item--with-icon"
+      onClick={() => {
+        const checked = !isChecked;
+        setIsChecked(checked);
 
-          const nextParams = new URLSearchParams(searchParams);
-          if (checked) {
-            nextParams.set("showArchived", "true");
-          } else {
-            nextParams.delete("showArchived");
-          }
-          setSearchParams(nextParams, { replace: true });
-        }}
-        title="Show archived boards"
-        type="checkbox"
-      />
-      <span>
-        {isChecked ? (
-          <EyeIcon className="subnav__archive-icon subnav__archive-icon--shown" />
-        ) : (
-          <EyeOffIcon className="subnav__archive-icon subnav__archive-icon--hidden" />
-        )}
-        Archived
-      </span>
-    </label>
+        const nextParams = new URLSearchParams(searchParams);
+        if (checked) {
+          nextParams.set("showArchived", "true");
+        } else {
+          nextParams.delete("showArchived");
+        }
+        setSearchParams(nextParams, { replace: true });
+      }}
+      role="menuitemcheckbox"
+      title={isChecked ? "Hide archived boards" : "Show archived boards"}
+      type="button"
+    >
+      {isChecked ? (
+        <EyeIcon className="ui-icon archived-icon--shown" />
+      ) : (
+        <EyeOffIcon className="ui-icon archived-icon--hidden" />
+      )}
+      Archived
+    </button>
   );
 }

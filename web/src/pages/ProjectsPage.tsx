@@ -471,7 +471,7 @@ export function ProjectsPage() {
           copy={
             showArchived
               ? "Create the first project to open a board with Todo, In Progress, In review, and Done ready to go."
-              : "Create a project or turn on Archived to find an archived board."
+              : "Create a project or turn on Archived in the account menu to find an archived board."
           }
           eyebrow="Empty workspace"
           title={showArchived ? "No boards yet." : "No active boards."}
