@@ -49,6 +49,35 @@ export function CloseIcon({ className }: { className?: string }) {
   );
 }
 
+export function EyeIcon({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <path
+        d="M2.5 12C4.5 8.5 7.8 5.5 12 5.5s7.5 3 9.5 6.5c-2 3.5-5.3 6.5-9.5 6.5S4.5 15.5 2.5 12Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <circle cx="12" cy="12" r="2.75" stroke="currentColor" strokeWidth="1.8" />
+    </SvgIcon>
+  );
+}
+
+export function EyeOffIcon({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <path
+        d="M9.6 5.9c.8-.3 1.6-.4 2.4-.4 4.2 0 7.5 3 9.5 6.5-.7 1.2-1.6 2.4-2.6 3.4M14.4 18.1c-.8.3-1.6.4-2.4.4-4.2 0-7.5-3-9.5-6.5.7-1.2 1.6-2.4 2.6-3.4M11.76 9.26a2.75 2.75 0 0 1 2.98 2.98M12.24 14.74a2.75 2.75 0 0 1-2.98-2.98M4 4l16 16"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </SvgIcon>
+  );
+}
+
 export function ArchiveIcon({ restore = false }: { restore?: boolean }) {
   return (
     <SvgIcon>

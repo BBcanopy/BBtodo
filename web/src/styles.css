@@ -693,15 +693,10 @@ h3 {
     color 220ms var(--ease);
 }
 
-.subnav__archive-toggle span::before {
-  content: "";
-  width: 0.55rem;
-  height: 0.55rem;
-  border: 1.5px solid currentColor;
-  border-radius: 999px;
-  transition:
-    background-color 220ms var(--ease),
-    border-color 220ms var(--ease);
+.subnav__archive-icon {
+  flex: 0 0 auto;
+  width: 1.05rem;
+  height: 1.05rem;
 }
 
 .subnav__archive-toggle input:hover + span {
@@ -714,9 +709,8 @@ h3 {
   color: var(--ink);
 }
 
-.subnav__archive-toggle input:checked + span::before {
-  border-color: var(--accent);
-  background: var(--accent);
+.subnav__archive-toggle input:checked + span .subnav__archive-icon {
+  color: var(--accent);
 }
 
 .subnav__archive-toggle input:focus-visible + span {

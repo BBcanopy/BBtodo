@@ -182,14 +182,36 @@ for (const viewport of [
     const hasPageOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     expect(hasPageOverflow).toBe(false);
 
+    const pill = page.locator(".subnav__archive-toggle span");
+    const eyeIcon = pill.locator("svg.subnav__archive-icon--shown");
+    const crossedEyeIcon = pill.locator("svg.subnav__archive-icon--hidden");
+    await expect(pill).toHaveText("Archived");
+    await expect(crossedEyeIcon).toBeVisible();
+    await expect(eyeIcon).toHaveCount(0);
+    const hiddenStateBounds = await pill.boundingBox();
+
     await page.getByLabel("Search boards").focus();
     await page.keyboard.press("Tab");
     await expect(toggle).toBeFocused();
-    await expect(page.locator(".subnav__archive-toggle span")).toHaveCSS("outline-style", "solid");
+    await expect(pill).toHaveCSS("outline-style", "solid");
     await page.keyboard.press("Space");
     await expect(toggle).toBeChecked();
     await expect(page).toHaveURL("/?showArchived=true");
-    await expect(page.locator(".subnav__archive-toggle span")).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(pill).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(eyeIcon).toBeVisible();
+    await expect(crossedEyeIcon).toHaveCount(0);
+    const shownStateBounds = await pill.boundingBox();
+    expect(shownStateBounds!.width).toBeCloseTo(hiddenStateBounds!.width, 1);
+    expect(shownStateBounds!.x).toBeCloseTo(hiddenStateBounds!.x, 1);
+
+    await page.reload();
+    await expect(toggle).toBeChecked();
+    await expect(eyeIcon).toBeVisible();
+    await toggle.uncheck();
+    await expect(crossedEyeIcon).toBeVisible();
+    await expect(eyeIcon).toHaveCount(0);
+    await toggle.check();
+    await expect(eyeIcon).toBeVisible();
 
     await page.getByTestId("project-card-project-1").click();
     await expect(page).toHaveURL("/projects/BILL");

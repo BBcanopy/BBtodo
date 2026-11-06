@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { EyeIcon, EyeOffIcon } from "./ui";
+
 export function ArchivedToggle() {
   const [searchParams, setSearchParams] = useSearchParams();
   const showArchived = searchParams.get("showArchived") === "true";
@@ -30,7 +32,14 @@ export function ArchivedToggle() {
         title="Show archived boards"
         type="checkbox"
       />
-      <span>Archived</span>
+      <span>
+        {isChecked ? (
+          <EyeIcon className="subnav__archive-icon subnav__archive-icon--shown" />
+        ) : (
+          <EyeOffIcon className="subnav__archive-icon subnav__archive-icon--hidden" />
+        )}
+        Archived
+      </span>
     </label>
   );
 }
