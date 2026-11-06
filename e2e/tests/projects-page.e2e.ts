@@ -551,6 +551,56 @@ for (const viewport of [
   });
 }
 
+for (const width of [950, 1280, 1440, 1600, 1920]) {
+  test(`project cards use the full grid width at ${width}px`, async ({ page }) => {
+    await mockAuthenticated(page, { projects: projectsForGrid });
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    const projectGrid = page.locator(".project-grid");
+    await expect(page.getByTestId("project-card-project-1")).toBeVisible();
+    await waitForProjectGridCardsToFinishAnimating(projectGrid);
+
+    const layout = await projectGrid.evaluate((grid) => {
+      const gridRight = grid.getBoundingClientRect().right;
+      const cards = Array.from(grid.querySelectorAll<HTMLElement>(".project-card"));
+      const firstCard = cards[0];
+      const firstRowCards = cards.filter((card) => card.offsetTop === firstCard.offsetTop);
+      const pills = Array.from(firstCard.querySelectorAll<HTMLElement>(".project-card__lane-pill"));
+      const counts = firstCard.querySelector<HTMLElement>(".project-card__lane-counts")!;
+
+      return {
+        cardWidth: firstCard.getBoundingClientRect().width,
+        pageOverflows: document.documentElement.scrollWidth > window.innerWidth,
+        pillRows: new Set(pills.map((pill) => pill.offsetTop)).size,
+        unusedCardSpace: gridRight - Math.max(...firstRowCards.map((card) => card.getBoundingClientRect().right)),
+        unusedPillSpace:
+          counts.getBoundingClientRect().right - Math.max(...pills.map((pill) => pill.getBoundingClientRect().right))
+      };
+    });
+
+    expect(Math.abs(layout.unusedCardSpace)).toBeLessThanOrEqual(1);
+    expect(Math.abs(layout.unusedPillSpace)).toBeLessThanOrEqual(1);
+    expect(layout.pillRows).toBe(2);
+    expect(layout.cardWidth).toBeGreaterThanOrEqual(304);
+    expect(layout.pageOverflows).toBe(false);
+  });
+}
+
+test("a few project cards stay card-sized instead of stretching across the page", async ({ page }) => {
+  await mockAuthenticated(page, { projects: projectsForGrid.slice(0, 2) });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/");
+  await expect(page.getByTestId("project-card-project-2")).toBeVisible();
+  await waitForProjectGridCardsToFinishAnimating(page.locator(".project-grid"));
+
+  const widths = await page.locator(".project-card").evaluateAll((cards) =>
+    cards.map((card) => card.getBoundingClientRect().width)
+  );
+  expect(widths).toHaveLength(2);
+  expect(widths[0]).toBeCloseTo(widths[1], 0);
+  expect(widths[0]).toBeLessThan(420);
+});
+
 test("projects search opens an exact ticket id", async ({ page }) => {
   await mockAuthenticated(page, {
     projects: projectsForGrid,

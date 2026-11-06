@@ -1705,14 +1705,11 @@ textarea:focus {
   --project-card-gap: 1rem;
   --project-card-row-height: 0.5rem;
   display: grid;
-  grid-template-columns: repeat(
-    auto-fit,
-    minmax(var(--project-card-column-width), var(--project-card-column-width))
-  );
+  /* auto-fill keeps empty tracks, so a few cards stay card-sized instead of spanning the page. */
+  grid-template-columns: repeat(auto-fill, minmax(var(--project-card-column-width), 1fr));
   grid-auto-flow: dense;
   grid-auto-rows: var(--project-card-row-height);
   gap: var(--project-card-gap);
-  justify-content: start;
   align-content: start;
   padding-bottom: var(--project-card-gap);
 }
@@ -1836,11 +1833,10 @@ textarea:focus {
 
 .project-card__lane-counts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(7.75rem, 7.75rem));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: minmax(4.1rem, auto);
   gap: 0.55rem;
   margin-top: 0.4rem;
-  justify-content: start;
   align-content: start;
   align-self: start;
 }
