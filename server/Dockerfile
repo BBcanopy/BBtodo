@@ -3,7 +3,8 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 
-RUN npm ci
+# Skip the implicit SQLite rebuild, then run the esbuild setup used by dev tools.
+RUN npm ci --ignore-scripts && npm rebuild esbuild
 
 COPY tsconfig.json ./
 COPY drizzle drizzle
@@ -17,7 +18,8 @@ ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
 
-RUN npm ci --omit=dev
+# better-sqlite3 v13 ships prebuilt binaries; avoid npm/cli#9837 rebuilding them.
+RUN npm ci --omit=dev --ignore-scripts
 
 COPY --from=builder /app/dist dist
 COPY --from=builder /app/drizzle drizzle

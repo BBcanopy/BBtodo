@@ -22,7 +22,10 @@ jobs:
           cache-dependency-path: server/package-lock.json
 
       - name: Install server dependencies
-        run: npm ci
+        # better-sqlite3 ships prebuilt binaries; npm/cli#9837 rebuilds them otherwise.
+        run: |
+          npm ci --ignore-scripts
+          npm rebuild esbuild
         working-directory: server
 
       - name: Run server tests
