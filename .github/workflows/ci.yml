@@ -2,6 +2,7 @@ name: ci
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -69,6 +70,9 @@ jobs:
       - name: Run skill tests
         run: python3 -m unittest discover -s skills/bbtodo/tests
 
+      - name: Run Dependabot auto-merge tests
+        run: python3 -m unittest discover -s .github/scripts
+
   e2e:
     runs-on: ubuntu-latest
 
@@ -106,7 +110,9 @@ jobs:
       - skill
       - e2e
       - docker-smoke
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main')
     permissions:
       contents: read
       packages: write
