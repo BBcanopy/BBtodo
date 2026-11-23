@@ -1,49 +1,47 @@
 name: Dependabot auto-merge
 
 on:
-  workflow_run:
-    workflows: [ci]
-    types: [completed]
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
 
-permissions: {}
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: dependabot-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  merge:
+  auto-merge:
     if: >-
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
-      github.event.workflow_run.head_repository.id == github.event.repository.id
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.id == github.event.repository.id &&
+      !github.event.pull_request.draft
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: write
-      pull-requests: read
-    outputs:
-      merged: ${{ steps.merge.outputs.merged }}
+    env:
+      PR_URL: ${{ github.event.pull_request.html_url }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
-      # The default-branch revision supplies the merge script.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-          sparse-checkout: .github/scripts
+      - name: Fetch Dependabot metadata
+        id: metadata
+        if: github.event.pull_request.commits == 1
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
 
-      - name: Merge eligible Dependabot PR
-        id: merge
+      - name: Enable auto-merge for minor and patch updates
+        id: enable
+        if: >-
+          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-patch'
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 .github/scripts/dependabot_automerge.py
+          GH_TOKEN: ${{ secrets.DEPENDABOT_AUTOMERGE_TOKEN }}
+        run: gh pr merge "$PR_URL" --auto --merge --match-head-commit "$HEAD_SHA"
 
-  main-ci:
-    needs: merge
-    if: needs.merge.outputs.merged == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    steps:
-      # GITHUB_TOKEN merges do not trigger push workflows.
-      - name: Start publishing pipeline on main
+      - name: Disable auto-merge when an update stops qualifying
+        if: >-
+          !cancelled() && github.event.pull_request.auto_merge != null &&
+          (steps.metadata.outcome != 'success' || steps.enable.outcome == 'skipped')
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref main
+          GH_TOKEN: ${{ secrets.DEPENDABOT_AUTOMERGE_TOKEN }}
+        run: gh pr merge "$PR_URL" --disable-auto
